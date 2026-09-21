@@ -1,0 +1,1394 @@
+---
+title: "Congressional staff experience from LegiStorm data"
+subtitle: "Primary employment history from congressional_history.csv"
+author: Devin Judge-Lord
+date: today
+format:
+  html:
+    toc: true
+    code-fold: true
+    self-contained: true
+editor_options:
+  chunk_output_type: console
+---
+
+# Congressional staff experience
+
+The primary source for this analysis is `congressional_history.csv`. The appropriate unit is a **staffer–office spell**: one row for each period during which a person worked in a congressional office.
+
+The principal identifiers are:
+
+- `core_person_id`: staffer
+- `member_id`: member whose office employed the staffer
+- `office_id`: committee or institutional office
+- `start_date`, `end_date`: employment spell
+- `position_title`: staff position
+- `office_type_id`: office type
+
+For staffer \(i\) in member office \(m\) during year \(y\), define:
+
+$$
+E_{imy} =
+\text{total years staffer } i
+\text{ worked in any congressional office by the reference date in year } y.
+$$
+
+Member-office experience is:
+
+$$
+E_{my} = \sum_{i \in S_{my}} E_{imy},
+$$
+
+where \(S_{my}\) is the set of distinct staffers employed by member \(m\) in year \(y\).
+
+The analysis:
+
+1. Uses `congressional_history.csv` to define the primary staffer–member–year population.
+2. Uses all congressional-history spells to measure each person's accumulated congressional experience.
+3. Merges overlapping spells so concurrent jobs are not counted more than once.
+4. Counts each person once per member-year.
+5. Uses December 31 as the annual reference date, censored at the analysis endpoint.
+6. Constructs the same measures from `salary_auto_history.csv` as a secondary comparison.
+
+## Setup
+
+```{r}
+#| label: setup
+#| warning: false
+#| message: false
+
+library(tidyverse)
+library(data.table)
+library(here)
+library(scales)
+
+here::here("code", "qmd_global_options.R") |> source()
+
+data_dir <- here(
+  "data",
+  "legistorm",
+  "LegistormDataWisconsin2026",
+  "Data"
+)
+
+analysis_end <- as.IDate("2026-12-31")
+
+history <- fread(
+  file.path(data_dir, "congressional_history.csv"),
+  na.strings = c("", "NA", "NULL")
+)
+
+salary <- fread(
+  file.path(data_dir, "salary_auto_history.csv"),
+  na.strings = c("", "NA", "NULL")
+)
+
+member_office <- fread(
+  file.path(data_dir, "member_office.csv"),
+  na.strings = c("", "NA", "NULL")
+)
+
+office <- fread(
+  file.path(data_dir, "office.csv"),
+  na.strings = c("", "NA", "NULL")
+)
+
+office_type <- fread(
+  file.path(data_dir, "office_type.csv"),
+  na.strings = c("", "NA", "NULL")
+)
+
+member <- fread(
+  file.path(data_dir, "member.csv"),
+  na.strings = c("", "NA", "NULL")
+)
+
+person <- fread(
+  file.path(data_dir, "core_person.csv"),
+  na.strings = c("", "NA", "NULL")
+)
+```
+
+# Primary measure: `congressional_history.csv`
+
+## 1. Parse LegiStorm partial dates
+
+LegiStorm uses partial dates such as `2006-05-00` and `1998-00-00`. The parser uses interval bounds:
+
+- Start `YYYY-MM-00` becomes the first day of the month.
+- End `YYYY-MM-00` becomes the last day of the month.
+- Start `YYYY-00-00` becomes January 1.
+- End `YYYY-00-00` becomes December 31.
+
+```{r}
+#| label: define-partial-date-parser
+
+parse_partial_date <- function(x, bound = c("start", "end")) {
+  bound <- match.arg(bound)
+  x <- trimws(as.character(x))
+  x[x %chin% c("", "NA", "NULL")] <- NA_character_
+
+  parts <- tstrsplit(
+    x,
+    "-",
+    fixed = TRUE,
+    fill = NA_character_
+  )
+
+  year <- suppressWarnings(as.integer(parts[[1]]))
+  month <- suppressWarnings(as.integer(parts[[2]]))
+  day <- suppressWarnings(as.integer(parts[[3]]))
+
+  month_missing <- is.na(month) | month == 0L
+  day_missing <- is.na(day) | day == 0L
+
+  month[month_missing] <- if (bound == "start") 1L else 12L
+
+  if (bound == "start") {
+    day[day_missing] <- 1L
+  } else {
+    day[day_missing] <- 1L
+  }
+
+  result <- rep(as.IDate(NA), length(x))
+
+  valid_base <- (
+    !is.na(year) &
+      !is.na(month) &
+      month >= 1L &
+      month <= 12L &
+      !is.na(day)
+  )
+
+  result[valid_base] <- as.IDate(
+    sprintf(
+      "%04d-%02d-%02d",
+      year[valid_base],
+      month[valid_base],
+      day[valid_base]
+    ),
+    format = "%Y-%m-%d"
+  )
+
+  if (bound == "end") {
+    use_month_end <- valid_base & day_missing
+
+    next_month <- as.IDate(
+      sprintf(
+        "%04d-%02d-01",
+        year[use_month_end] +
+          as.integer(month[use_month_end] == 12L),
+        fifelse(
+          month[use_month_end] == 12L,
+          1L,
+          month[use_month_end] + 1L
+        )
+      )
+    )
+
+    result[use_month_end] <- next_month - 1L
+  }
+
+  result
+}
+```
+
+## 2. Prepare congressional-history spells
+
+```{r}
+#| label: prepare-history-spells
+
+history[
+  ,
+  history_start := parse_partial_date(
+    start_date,
+    bound = "start"
+  )
+]
+
+history[
+  ,
+  history_end := parse_partial_date(
+    end_date,
+    bound = "end"
+  )
+]
+
+history[
+  ,
+  `:=`(
+    start_date_precision = fcase(
+      is.na(start_date), "missing",
+      grepl("-00-00$", start_date), "year",
+      grepl("-00$", start_date), "month",
+      default = "day"
+    ),
+    end_date_precision = fcase(
+      is.na(end_date), "missing",
+      grepl("-00-00$", end_date), "year",
+      grepl("-00$", end_date), "month",
+      default = "day"
+    )
+  )
+]
+
+# Only genuinely missing end dates are treated as ongoing.
+history[
+  is.na(end_date) & is.na(history_end),
+  history_end := analysis_end
+]
+
+history <- history[
+  !is.na(core_person_id) &
+    !is.na(history_start) &
+    !is.na(history_end) &
+    history_end >= history_start
+]
+
+history[, .N, by = start_date_precision][order(start_date_precision)]
+history[, .N, by = end_date_precision][order(end_date_precision)]
+```
+
+## 3. Build nonoverlapping congressional-history spells
+
+All history records contribute to prior congressional experience, including service associated with member, committee, and institutional offices.
+
+```{r}
+#| label: collapse-history-spells
+
+history_all_spells <- history[
+  ,
+  .(
+    core_person_id,
+    start = as.IDate(history_start),
+    end = as.IDate(history_end)
+  )
+]
+
+setorder(
+  history_all_spells,
+  core_person_id,
+  start,
+  end
+)
+
+history_all_spells[
+  ,
+  previous_max_end_num := shift(
+    cummax(as.integer(end)),
+    fill = as.integer(as.IDate("1900-01-01"))
+  ),
+  by = core_person_id
+]
+
+history_all_spells[
+  ,
+  spell_group := cumsum(
+    as.integer(start) > previous_max_end_num + 1L
+  ),
+  by = core_person_id
+]
+
+history_person_spells <- history_all_spells[
+  ,
+  .(
+    start = min(start),
+    end = max(end)
+  ),
+  by = .(core_person_id, spell_group)
+]
+```
+
+## 4. Define member-office jobs from congressional history
+
+Records with a nonmissing `member_id` define the primary staffer–member employment population.
+
+```{r}
+#| label: build-history-member-jobs
+
+history_member_jobs <- history[
+  !is.na(member_id),
+  .(
+    core_person_id,
+    member_id,
+    office_id,
+    job_start = as.IDate(history_start),
+    job_end = as.IDate(history_end),
+    position_title,
+    office_type_id
+  )
+]
+
+history_member_jobs <- history_member_jobs[
+  !is.na(core_person_id) &
+    !is.na(member_id) &
+    !is.na(job_start) &
+    !is.na(job_end) &
+    job_end >= job_start
+]
+
+history_member_jobs[, .N]
+```
+
+Here, `member_id` identifies the member whose office is associated with the employment record, while `core_person_id` identifies the staffer.
+
+## 5. Expand congressional-history jobs into staffer-years
+
+```{r}
+#| label: expand-history-staffer-years
+
+history_staffer_member_year <- history_member_jobs[
+  ,
+  {
+    first_year <- as.integer(format(job_start[1L], "%Y"))
+    last_year <- as.integer(format(job_end[1L], "%Y"))
+
+    .(
+      year = seq.int(first_year, last_year)
+    )
+  },
+  by = .(
+    core_person_id,
+    member_id,
+    office_id,
+    job_start,
+    job_end
+  )
+]
+
+history_staffer_member_year[
+  ,
+  reference_date := as.IDate(
+    sprintf("%d-12-31", year)
+  )
+]
+
+history_staffer_member_year[
+  reference_date > analysis_end,
+  reference_date := analysis_end
+]
+
+history_staffer_member_year <- history_staffer_member_year[
+  job_start <= reference_date &
+    job_end >= as.IDate(sprintf("%d-01-01", year))
+]
+
+history_staffer_member_year <- unique(
+  history_staffer_member_year,
+  by = c("core_person_id", "member_id", "year")
+)
+
+history_staffer_member_year[, .N, by = year][order(year)]
+```
+
+## 6. Calculate primary staffer experience
+
+```{r}
+#| label: calculate-history-experience
+
+history_experience_components <- merge(
+  history_staffer_member_year[
+    ,
+    .(
+      core_person_id,
+      member_id,
+      year,
+      reference_date
+    )
+  ],
+  history_person_spells[
+    ,
+    .(
+      core_person_id,
+      experience_start = start,
+      experience_end = end
+    )
+  ],
+  by = "core_person_id",
+  all.x = TRUE,
+  allow.cartesian = TRUE
+)
+
+history_experience_components <-
+  history_experience_components[
+    !is.na(experience_start) &
+      experience_start <= reference_date
+  ]
+
+history_experience_components[
+  ,
+  counted_end := pmin(
+    experience_end,
+    reference_date
+  )
+]
+
+history_experience_components[
+  ,
+  experience_days_component :=
+    as.integer(counted_end - experience_start) + 1L
+]
+
+staffer_experience <- history_experience_components[
+  ,
+  .(
+    congressional_experience_days =
+      sum(experience_days_component)
+  ),
+  by = .(
+    core_person_id,
+    member_id,
+    year
+  )
+]
+
+staffer_experience[
+  ,
+  congressional_experience_years :=
+    congressional_experience_days / 365.25
+]
+
+staffer_experience[, .N, by = year][order(year)]
+```
+
+`staffer_experience` is now the primary result, based on `congressional_history.csv`. It has one row per:
+
+```text
+core_person_id × member_id × year
+```
+
+```{r}
+#| label: save-history-staffer-experience
+
+save(
+  staffer_experience,
+  file = here::here(
+    "data",
+    "legistorm",
+    "staffer_experience_history.rda"
+  )
+)
+```
+
+## 7. Plot the primary staffer-experience distribution
+
+```{r}
+#| label: plot-history-experience-distribution
+
+staffer_experience |>
+  filter(year > 2000) |> 
+  ggplot(
+    aes(x = congressional_experience_years)
+  ) +
+  geom_histogram(
+    binwidth = 5,
+    boundary = 0,
+    color = "white",
+    fill = "#00274C"
+  ) +
+  facet_wrap(
+    vars(year),
+    scales = "free_y"
+  ) +
+  scale_x_continuous(
+    breaks = breaks_width(5),
+    labels = label_number(accuracy = 1),
+    expand = expansion(mult = c(0, 0.02))
+  ) +
+  scale_y_continuous(
+    labels = label_comma(),
+    expand = expansion(mult = c(0, 0.05))
+  ) +
+  labs(
+    title = "Distribution of congressional staff experience by year",
+    subtitle = "Experience and staff population from congressional_history.csv",
+    x = "Congressional experience (years)",
+    y = "Number of staffer–member observations",
+    caption = paste(
+      "A staffer serving multiple member offices in the same year",
+      "may appear more than once."
+    )
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.minor = element_blank(),
+    strip.text = element_text(face = "bold")
+  )
+```
+
+```{r}
+#| label: plot-history-experience-over-one-year
+
+staffer_experience |>
+    filter(year > 2000) |> 
+  filter(congressional_experience_years > 1) |>
+  ggplot(
+    aes(x = congressional_experience_years)
+  ) +
+  geom_histogram(
+    binwidth = 5,
+    boundary = 0,
+    color = "white",
+    fill = "#00274C"
+  ) +
+  facet_wrap(
+    vars(year),
+    scales = "free_y"
+  ) +
+  scale_x_continuous(
+    breaks = breaks_width(5),
+    labels = label_number(accuracy = 1),
+    expand = expansion(mult = c(0, 0.02))
+  ) +
+  scale_y_continuous(
+    labels = label_comma(),
+    expand = expansion(mult = c(0, 0.05))
+  ) +
+  labs(
+    title = "Congressional staff with more than one year of experience",
+    subtitle = "Experience and staff population from congressional_history.csv",
+    x = "Congressional experience (years)",
+    y = "Number of staffer–member observations"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.minor = element_blank(),
+    strip.text = element_text(face = "bold")
+  )
+```
+
+## 8. Aggregate the primary measure to member-years
+
+```{r}
+#| label: aggregate-history-member-years
+
+member_year_experience <- staffer_experience[
+  ,
+  .(
+    staff_count = uniqueN(core_person_id),
+    total_staff_experience_years =
+      sum(congressional_experience_years, na.rm = TRUE),
+    mean_staff_experience_years =
+      mean(congressional_experience_years, na.rm = TRUE),
+    median_staff_experience_years =
+      median(congressional_experience_years, na.rm = TRUE)
+  ),
+  by = .(member_id, year)
+]
+```
+
+```{r}
+#| label: add-member-names-to-history-results
+
+member[, core_person_id := as.integer(core_person_id)]
+member[, member_id := as.integer(member_id)]
+person[, core_person_id := as.integer(core_person_id)]
+
+member_names <- merge(
+  member,
+  person[
+    ,
+    .(
+      core_person_id,
+      first_name,
+      last_name
+    )
+  ],
+  by = "core_person_id",
+  all.x = TRUE
+)
+
+member_year_experience <- merge(
+  member_year_experience,
+  member_names[
+    ,
+    .(
+      member_id,
+      first_name,
+      last_name,
+      icpsr_id
+    )
+  ],
+  by = "member_id",
+  all.x = TRUE
+)
+
+setorder(
+  member_year_experience,
+  member_id,
+  year
+)
+
+member_year_experience[]
+```
+
+```{r}
+#| label: plot-history-member-year-experience
+
+member_year_experience |>
+  ggplot(
+    aes(
+      x = year,
+      y = total_staff_experience_years,
+      group = member_id
+    )
+  ) +
+  geom_line(alpha = 0.2) +
+  labs(
+    title = "Total staff experience by member and year",
+    subtitle = "Primary measure from congressional_history.csv",
+    x = "Year",
+    y = "Total staff experience (years)"
+  ) +
+  theme_minimal()
+
+member_year_experience |>
+  ggplot(
+    aes(
+      x = year,
+      y = mean_staff_experience_years,
+      group = member_id
+    )
+  ) +
+  geom_line(alpha = 0.2) +
+  labs(
+    title = "Mean staff experience by member and year",
+    subtitle = "Primary measure from congressional_history.csv",
+    x = "Year",
+    y = "Mean staff experience (years)"
+  ) +
+  theme_minimal()
+
+member_year_experience |>
+  ggplot(
+    aes(
+      x = year,
+      y = median_staff_experience_years,
+      group = member_id
+    )
+  ) +
+  geom_line(alpha = 0.2) +
+  labs(
+    title = "Median staff experience by member and year",
+    subtitle = "Primary measure from congressional_history.csv",
+    x = "Year",
+    y = "Median staff experience (years)"
+  ) +
+  theme_minimal()
+```
+
+# Comparison measure: `salary_auto_history.csv`
+
+The salary-history analysis is constructed second. It provides an independent staffer–member–year population and experience estimate for comparison with the primary congressional-history measure.
+
+## 9. Prepare salary-history spells
+
+```{r}
+#| label: prepare-salary-spells
+
+salary[
+  ,
+  start := parse_partial_date(
+    start_date,
+    bound = "start"
+  )
+]
+
+salary[
+  ,
+  end := parse_partial_date(
+    end_date,
+    bound = "end"
+  )
+]
+
+salary[
+  is.na(end_date) & is.na(end),
+  end := analysis_end
+]
+
+salary <- salary[
+  !is.na(core_person_id) &
+    !is.na(start) &
+    !is.na(end) &
+    end >= start
+]
+```
+
+## 10. Build nonoverlapping salary-history spells
+
+```{r}
+#| label: collapse-salary-spells
+
+salary_all_spells <- salary[
+  ,
+  .(
+    core_person_id,
+    start,
+    end
+  )
+]
+
+setorder(
+  salary_all_spells,
+  core_person_id,
+  start,
+  end
+)
+
+salary_all_spells[
+  ,
+  previous_max_end_num := shift(
+    cummax(as.integer(end)),
+    fill = as.integer(as.IDate("1900-01-01"))
+  ),
+  by = core_person_id
+]
+
+salary_all_spells[
+  ,
+  spell_group := cumsum(
+    as.integer(start) > previous_max_end_num + 1L
+  ),
+  by = core_person_id
+]
+
+salary_person_spells <- salary_all_spells[
+  ,
+  .(
+    start = min(start),
+    end = max(end)
+  ),
+  by = .(core_person_id, spell_group)
+]
+```
+
+## 11. Build salary-history member jobs
+
+```{r}
+#| label: build-salary-member-jobs
+
+salary_member_jobs <- salary[
+  !is.na(member_office_id),
+  .(
+    core_person_id,
+    member_office_id,
+    job_start = start,
+    job_end = end,
+    title
+  )
+]
+
+salary_member_jobs <- merge(
+  salary_member_jobs,
+  member_office[
+    ,
+    .(
+      member_office_id,
+      member_id,
+      office_id
+    )
+  ],
+  by = "member_office_id",
+  all.x = TRUE
+)
+
+salary_member_jobs <- salary_member_jobs[
+  !is.na(core_person_id) &
+    !is.na(member_id) &
+    !is.na(job_start) &
+    !is.na(job_end) &
+    job_end >= job_start
+]
+
+salary_member_jobs[, .N]
+```
+
+## 12. Expand salary jobs into staffer-years
+
+```{r}
+#| label: expand-salary-staffer-years
+
+salary_staffer_member_year <- salary_member_jobs[
+  ,
+  {
+    first_year <- as.integer(format(job_start[1L], "%Y"))
+    last_year <- as.integer(format(job_end[1L], "%Y"))
+
+    .(
+      year = seq.int(first_year, last_year)
+    )
+  },
+  by = .(
+    core_person_id,
+    member_id,
+    member_office_id,
+    job_start,
+    job_end
+  )
+]
+
+salary_staffer_member_year[
+  ,
+  reference_date := as.IDate(
+    sprintf("%d-12-31", year)
+  )
+]
+
+salary_staffer_member_year[
+  reference_date > analysis_end,
+  reference_date := analysis_end
+]
+
+salary_staffer_member_year <- salary_staffer_member_year[
+  job_start <= reference_date &
+    job_end >= as.IDate(sprintf("%d-01-01", year))
+]
+
+salary_staffer_member_year <- unique(
+  salary_staffer_member_year,
+  by = c("core_person_id", "member_id", "year")
+)
+```
+
+## 13. Calculate salary-history experience
+
+```{r}
+#| label: calculate-salary-experience
+
+salary_experience_components <- merge(
+  salary_staffer_member_year[
+    ,
+    .(
+      core_person_id,
+      member_id,
+      year,
+      reference_date
+    )
+  ],
+  salary_person_spells[
+    ,
+    .(
+      core_person_id,
+      experience_start = start,
+      experience_end = end
+    )
+  ],
+  by = "core_person_id",
+  all.x = TRUE,
+  allow.cartesian = TRUE
+)
+
+salary_experience_components <-
+  salary_experience_components[
+    !is.na(experience_start) &
+      experience_start <= reference_date
+  ]
+
+salary_experience_components[
+  ,
+  counted_end := pmin(
+    experience_end,
+    reference_date
+  )
+]
+
+salary_experience_components[
+  ,
+  experience_days_component :=
+    as.integer(counted_end - experience_start) + 1L
+]
+
+salary_experience <- salary_experience_components[
+  ,
+  .(
+    salary_experience_days =
+      sum(experience_days_component)
+  ),
+  by = .(
+    core_person_id,
+    member_id,
+    year
+  )
+]
+
+salary_experience[
+  ,
+  salary_experience_years :=
+    salary_experience_days / 365.25
+]
+```
+
+# Compare salary history with the primary history measure
+
+The primary estimate and population come from `congressional_history.csv`. Salary history is the comparison source.
+
+## 14. Join the independently constructed measures
+
+```{r}
+#| label: join-history-and-salary-experience
+
+experience_comparison <- merge(
+  staffer_experience[
+    ,
+    .(
+      core_person_id,
+      member_id,
+      year,
+      history_experience_years =
+        congressional_experience_years
+    )
+  ],
+  salary_experience[
+    ,
+    .(
+      core_person_id,
+      member_id,
+      year,
+      salary_experience_years
+    )
+  ],
+  by = c(
+    "core_person_id",
+    "member_id",
+    "year"
+  ),
+  all = TRUE
+)
+
+experience_comparison[
+  ,
+  difference_years :=
+    history_experience_years -
+    salary_experience_years
+]
+
+experience_comparison[
+  ,
+  source_coverage := fcase(
+    !is.na(history_experience_years) &
+      !is.na(salary_experience_years),
+    "Both sources",
+    !is.na(history_experience_years),
+    "Congressional history only",
+    !is.na(salary_experience_years),
+    "Salary history only",
+    default = "Neither source"
+  )
+]
+```
+
+A positive `difference_years` value means that `congressional_history.csv` estimates more experience than `salary_auto_history.csv`.
+
+## 15. Summarize agreement and coverage
+
+```{r}
+#| label: summarize-source-agreement
+
+comparison_summary <- experience_comparison[
+  !is.na(history_experience_years) &
+    !is.na(salary_experience_years),
+  .(
+    observations = .N,
+    correlation = cor(
+      history_experience_years,
+      salary_experience_years,
+      use = "complete.obs"
+    ),
+    mean_history_experience =
+      mean(history_experience_years),
+    mean_salary_experience =
+      mean(salary_experience_years),
+    mean_difference =
+      mean(difference_years),
+    median_difference =
+      median(difference_years),
+    mean_absolute_difference =
+      mean(abs(difference_years)),
+    root_mean_squared_difference =
+      sqrt(mean(difference_years^2))
+  )
+]
+
+comparison_summary
+```
+
+```{r}
+#| label: summarize-source-coverage
+
+coverage_by_year <- experience_comparison[
+  ,
+  .(
+    observations = .N,
+    history_available =
+      sum(!is.na(history_experience_years)),
+    salary_available =
+      sum(!is.na(salary_experience_years)),
+    both_available =
+      sum(
+        !is.na(history_experience_years) &
+          !is.na(salary_experience_years)
+      ),
+    history_only =
+      sum(
+        !is.na(history_experience_years) &
+          is.na(salary_experience_years)
+      ),
+    salary_only =
+      sum(
+        is.na(history_experience_years) &
+          !is.na(salary_experience_years)
+      )
+  ),
+  by = year
+][order(year)]
+
+coverage_by_year
+```
+
+## 16. Plot staffer-level agreement
+
+```{r}
+#| label: plot-staffer-source-agreement
+
+ggplot(
+  experience_comparison[
+    !is.na(history_experience_years) &
+      !is.na(salary_experience_years)
+  ],
+  aes(
+    x = history_experience_years,
+    y = salary_experience_years
+  )
+) +
+  geom_point(
+    alpha = 0.15,
+    size = 0.8
+  ) +
+  geom_abline(
+    intercept = 0,
+    slope = 1,
+    linetype = "dashed",
+    color = "firebrick"
+  ) +
+  coord_equal() +
+  labs(
+    title = "Comparison of congressional-experience estimates",
+    subtitle = "Each point is a staffer–member–year observed in both sources",
+    x = "Primary estimate from congressional history (years)",
+    y = "Comparison estimate from salary history (years)"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+#| label: plot-staffer-source-differences
+
+ggplot(
+  experience_comparison[
+    !is.na(difference_years)
+  ],
+  aes(
+    x = year,
+    y = difference_years,
+    group = year
+  )
+) +
+  geom_hline(
+    yintercept = 0,
+    linetype = "dashed",
+    color = "firebrick"
+  ) +
+  geom_boxplot(
+    outlier.alpha = 0.05
+  ) +
+  labs(
+    title = "Difference between staff-experience estimates by year",
+    subtitle = paste(
+      "Positive values indicate more experience",
+      "in congressional history"
+    ),
+    x = "Year",
+    y = "Congressional history minus salary history (years)"
+  ) +
+  theme_minimal()
+```
+
+## 17. Compare member-year totals
+
+```{r}
+#| label: aggregate-member-year-comparison
+
+member_year_comparison <- experience_comparison[
+  ,
+  .(
+    history_total_experience =
+      sum(history_experience_years, na.rm = TRUE),
+    salary_total_experience =
+      sum(salary_experience_years, na.rm = TRUE),
+    staffers_in_history =
+      uniqueN(
+        core_person_id[
+          !is.na(history_experience_years)
+        ]
+      ),
+    staffers_in_salary =
+      uniqueN(
+        core_person_id[
+          !is.na(salary_experience_years)
+        ]
+      )
+  ),
+  by = .(member_id, year)
+]
+
+member_year_comparison[
+  ,
+  difference_total_experience :=
+    history_total_experience -
+    salary_total_experience
+]
+```
+
+```{r}
+#| label: plot-member-year-source-agreement
+
+ggplot(
+  member_year_comparison,
+  aes(
+    x = history_total_experience,
+    y = salary_total_experience
+  )
+) +
+  geom_point(alpha = 0.3) +
+  geom_abline(
+    intercept = 0,
+    slope = 1,
+    linetype = "dashed",
+    color = "firebrick"
+  ) +
+  labs(
+    title = "Member-office staff experience by data source",
+    subtitle = "Each point is a member–year",
+    x = "Primary total from congressional history",
+    y = "Comparison total from salary history"
+  ) +
+  theme_minimal()
+```
+
+# Optional time-weighted primary measure
+
+The unweighted member-year total counts someone who served for one day in a year the same as someone who served throughout the year. A time-weighted measure multiplies staff experience by the fraction of the year served in the member's office.
+
+## 18. Calculate congressional-history office-year fractions
+
+```{r, eval=FALSE}
+#| label: calculate-history-office-year-fractions
+
+history_office_year_intervals <- history_member_jobs[
+  ,
+  {
+    years <- seq.int(
+      as.integer(format(job_start[1L], "%Y")),
+      as.integer(format(job_end[1L], "%Y"))
+    )
+
+    year_start <- as.IDate(
+      sprintf("%d-01-01", years)
+    )
+
+    year_end <- as.IDate(
+      sprintf("%d-12-31", years)
+    )
+
+    active_start <- pmax(
+      job_start[1L],
+      year_start
+    )
+
+    active_end <- pmin(
+      job_end[1L],
+      year_end,
+      analysis_end
+    )
+
+    .(
+      year = years,
+      active_start,
+      active_end
+    )
+  },
+  by = .(
+    core_person_id,
+    member_id,
+    job_start,
+    job_end
+  )
+]
+
+history_office_year_intervals <-
+  history_office_year_intervals[
+    active_end >= active_start
+  ]
+
+setorder(
+  history_office_year_intervals,
+  core_person_id,
+  member_id,
+  year,
+  active_start,
+  active_end
+)
+
+history_office_year_intervals[
+  ,
+  previous_max_end_num := shift(
+    cummax(as.integer(active_end)),
+    fill = as.integer(as.IDate("1900-01-01"))
+  ),
+  by = .(
+    core_person_id,
+    member_id,
+    year
+  )
+]
+
+history_office_year_intervals[
+  ,
+  interval_group := cumsum(
+    as.integer(active_start) >
+      previous_max_end_num + 1L
+  ),
+  by = .(
+    core_person_id,
+    member_id,
+    year
+  )
+]
+
+history_office_year_intervals <-
+  history_office_year_intervals[
+    ,
+    .(
+      active_start = min(active_start),
+      active_end = max(active_end)
+    ),
+    by = .(
+      core_person_id,
+      member_id,
+      year,
+      interval_group
+    )
+  ]
+
+history_office_year_fraction <-
+  history_office_year_intervals[
+    ,
+    .(
+      days_in_office_year = sum(
+        as.integer(active_end - active_start) + 1L
+      )
+    ),
+    by = .(
+      core_person_id,
+      member_id,
+      year
+    )
+  ]
+
+history_office_year_fraction[
+  ,
+  days_in_year := as.integer(
+    pmin(
+      as.IDate(sprintf("%d-12-31", year)),
+      analysis_end
+    ) -
+      as.IDate(sprintf("%d-01-01", year))
+  ) + 1L
+]
+
+history_office_year_fraction[
+  ,
+  office_year_fraction := pmin(
+    days_in_office_year / days_in_year,
+    1
+  )
+]
+```
+
+## 19. Calculate time-weighted member-year experience
+
+```{r, eval=FALSE}
+#| label: calculate-weighted-history-experience
+
+weighted_history_experience <- merge(
+  staffer_experience,
+  history_office_year_fraction[
+    ,
+    .(
+      core_person_id,
+      member_id,
+      year,
+      office_year_fraction
+    )
+  ],
+  by = c(
+    "core_person_id",
+    "member_id",
+    "year"
+  ),
+  all.x = TRUE
+)
+
+weighted_history_experience[
+  ,
+  weighted_experience_years :=
+    congressional_experience_years *
+    office_year_fraction
+]
+
+weighted_member_year_experience <-
+  weighted_history_experience[
+    ,
+    .(
+      staff_count = uniqueN(core_person_id),
+      total_staff_experience_years =
+        sum(
+          congressional_experience_years,
+          na.rm = TRUE
+        ),
+      time_weighted_staff_experience_years =
+        sum(
+          weighted_experience_years,
+          na.rm = TRUE
+        )
+    ),
+    by = .(
+      member_id,
+      year
+    )
+  ]
+
+weighted_member_year_experience[]
+```
+
+# Interpretation
+
+The two sources may measure different aspects of congressional work:
+
+- `congressional_history.csv` may capture broader congressional career history, including positions outside payroll-derived member-office spells.
+- `salary_auto_history.csv` may provide more precise payroll-oriented dates and titles.
+- Differences can reflect coverage, incomplete dates, concurrent positions, and distinct source-construction rules.
+- The primary measure in this document uses congressional history for both the staff population and accumulated experience.
+- Salary history is an independently constructed comparison rather than the population-defining source.
+
+# Key assumptions
+
+1. `congressional_history.csv` identifies congressional employment spells sufficiently completely.
+2. Records with a nonmissing `member_id` identify service in a member's office.
+3. All history spells—including member, committee, and institutional service—contribute to prior congressional experience.
+4. Simultaneous or adjacent congressional jobs count once when measuring elapsed experience.
+5. Partial dates are bounded at the beginning of start intervals and end of end intervals.
+6. Open-ended spells are censored at the analysis endpoint.
+7. Staff assigned to multiple member offices in the same year may contribute to each office, but only once within each member-year.
+8. Total office experience is partly a function of office staff size, so staff count, mean experience, and median experience should also be retained.

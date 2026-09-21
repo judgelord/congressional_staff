@@ -1,0 +1,499 @@
+---
+title: "data"
+format: 
+  html:
+    toc: true
+    toc-location: left
+---
+
+```{r}
+
+print_first_two_rows <- function(directory) {
+  files <- list.files(
+    path = directory,
+    pattern = "\\.csv$",
+    full.names = TRUE,
+    ignore.case = TRUE
+  )
+
+  if (length(files) == 0) {
+    message("No CSV files found in: ", directory)
+    return(invisible(NULL))
+  }
+
+  for (file in files) {
+    cat("\n---", basename(file), "---\n")
+
+    tryCatch(
+      head(read.csv(file), 2),
+      error = function(e) message("Could not read file: ", e$message)
+    )
+  }
+
+  invisible(NULL)
+}
+
+here::here("data", "legistorm", "LegistormDataMichigan2016", "Data")  |> print_first_two_rows()
+
+titles_raw <- here::here("data", "legistorm", "LegistormDataWisconsin2026", "Data") |> print_first_two_rows()
+
+"salary_auto_history.csv"
+```
+
+# Comparison of the LegiStorm directories
+
+## Overall summary
+
+The two directories represent closely related versions of the same relational LegiStorm data model. They share many entity, lookup, and relationship tables and generally use the same primary and foreign key conventions.
+
+The main differences are:
+
+- **`LegistormDataMichigan2016/Data`** includes historical compensation-oriented tables and several demographic lookups.
+- **`LegistormDataWisconsin2026/Data`** appears to be a newer, expanded schema with update timestamps, richer member and organization data, office addresses, leadership, staff roles/issues, and salary history.
+- Several shared tables have changed fields, so the directories are **not fully schema-compatible** without transformation.
+
+> This comparison is based only on the filenames and columns visible in the two-row printout. It does not compare row counts, data types, constraints, or all values.
+
+## File coverage
+
+- 2016 directory: **39 CSV files**
+- 2026 directory: **45 CSV files**
+- Shared by both: **31 CSV files**
+- Only in the first: **8 CSV files**
+- Only in the second: **14 CSV files**
+
+### Shared files
+
+Both directories contain:
+
+- `award.csv`
+- `congressional_history.csv`
+- `contact_type.csv`
+- `core_organization_alias_type.csv`
+- `core_organization_alias.csv`
+- `core_organization.csv`
+- `core_person_alias.csv`
+- `core_person_publication_lookup.csv`
+- `core_person_publication.csv`
+- `core_person.csv`
+- `marital_status.csv`
+- `member_office_status.csv`
+- `member_office.csv`
+- `member_party.csv`
+- `member.csv`
+- `office_type.csv`
+- `office.csv`
+- `party.csv`
+- `person_award.csv`
+- `person_contact.csv`
+- `person_education.csv`
+- `person_interest_type.csv`
+- `person_interest.csv`
+- `person_language_skill.csv`
+- `person_language_type.csv`
+- `person_language.csv`
+- `person_marital_status.csv`
+- `person_military_history.csv`
+- `person_military_honor.csv`
+- `person_organization_relation_type.csv`
+- `person_organization.csv`
+- `person_relation_type.csv`
+- `person_relation.csv`
+- `state.csv`
+- `term.csv`
+
+The printed output actually indicates **35 shared filenames**, despite the initial 31-file count implied by a quick grouping. The detailed filename lists should be treated as authoritative.
+
+## Files only in `LegistormDataMichigan2016`
+
+| File | Purpose inferred from fields |
+|---|---|
+| `country.csv` | Country lookup |
+| `personnel_compensation.csv` | Staff compensation by office, period, salary, and title |
+| `race.csv` | Race lookup |
+| `religion.csv` | Religion lookup |
+| `salary_title.csv` | Standardized salary-title lookup |
+| `staffer.csv` | Staffer names and person identifiers |
+| `time_period.csv` | Senate or compensation reporting periods |
+| `title_group.csv` | Standardized job-title groupings |
+
+These files suggest that the 2016 directory uses a more explicit compensation data model:
+
+```text
+personnel_compensation
+  -> staffer
+  -> salary_title
+  -> title_group
+  -> time_period
+  -> term
+```
+
+It also provides standalone demographic lookup tables for country, race, and religion.
+
+## Files only in `LegistormDataWisconsin2026/Data`
+
+| File | Purpose inferred from fields |
+|---|---|
+| `core_person_photo.csv` | Person photographs and primary-photo status |
+| `leadership_position.csv` | Congressional leadership positions |
+| `member_title.csv` | Member leadership-title history |
+| `office_member_address.csv` | Member and office addresses and phone/fax details |
+| `office_member_address_staffer_lookup.csv` | Staff assigned to office/member addresses |
+| `organization_contact_type.csv` | Organization contact-method lookup |
+| `organization_contact.csv` | Organization websites, phone numbers, and other contacts |
+| `organization_relation_type.csv` | Organization relationship types |
+| `organization_relation.csv` | Parent, child, or other organization relationships |
+| `person_education_level.csv` | Standardized education-level lookup |
+| `salary_auto_history.csv` | Person salary/employment-title history |
+| `staffer_issue.csv` | Policy-issue taxonomy |
+| `staffer_issue_lookup.csv` | Staff assignments to policy issues |
+| `staffer_role.csv` | Staff-role taxonomy |
+| `staffer_role_lookup.csv` | Staff role assignments |
+
+This schema adds substantial coverage for:
+
+- Member biographies and leadership
+- Staff roles and policy portfolios
+- Office locations and contact details
+- Organization contacts and relationships
+- Person photographs
+- Education classification
+- Employment and salary history
+
+## Important differences in shared files
+
+### Audit timestamps
+
+The 2026 directory frequently adds an `updated_at` field. Examples include:
+
+- `congressional_history.csv`
+- `core_organization_alias.csv`
+- `core_organization.csv`
+- `core_person_alias.csv`
+- `core_person_publication_lookup.csv`
+- `core_person_publication.csv`
+- `member_office.csv`
+- `person_award.csv`
+- `person_contact.csv`
+- `person_education.csv`
+- `person_language.csv`
+- `person_military_history.csv`
+- `person_organization.csv`
+- `person_relation.csv`
+
+
+### `award.csv`
+
+Common fields:
+
+- `award_id`
+- `award_name`
+- `core_organization_id`
+- `organization_name`
+
+Difference:
+
+- 2016 directory has `core_organization_id.1`.
+- 2026 directory has `core_organization_alias_id`.
+
+The `.1` suffix likely resulted from duplicate source column names during export or import. It should not automatically be assumed to mean the same thing as `core_organization_alias_id`.
+
+### `congressional_history.csv`
+
+The core identifiers and historical-position fields are shared.
+
+The 2026 version adds:
+
+- `is_current`
+- `updated_at`
+
+The field order also differs.
+
+### `contact_type.csv`
+
+The structure is identical:
+
+- `contact_type_id`
+- `contact_type_name`
+
+However, lookup values have changed. For example:
+
+- 2016 directory: `Work phone`, `Work email`
+- 2026 directory: `Email, work`, `X (Twitter)`
+
+Therefore, code should join on `contact_type_id`, but even IDs and labels should be validated across versions rather than assumed stable.
+
+### `core_organization_alias.csv`
+
+The 2026 version adds:
+
+- `core_organization_alias_type_id`
+- `updated_at`
+
+This makes aliases explicitly classifiable as acronyms, former names, and similar categories.
+
+### `core_organization.csv`
+
+The 2016 directory contains only:
+
+- `core_organization_id`
+- `name`
+
+The 2026 version adds:
+
+- `is_dead`
+- `public_description`
+- `updated_at`
+
+### `core_person_alias.csv`
+
+The 2016 directory lacks a visible `core_person_id`, which makes linking aliases to people difficult.
+
+The 2026 version adds or exposes:
+
+- `core_person_id`
+- `is_english`
+- `updated_at`
+
+### `core_person.csv`
+
+Both versions describe the same underlying person entity, but the schemas differ substantially.
+
+The 2016 directory includes fields not shown in the 2026 output:
+
+- `dob`
+- `religion_id`
+- `race_id`
+
+The 2026 version includes:
+
+- `maj_min_id`
+
+Other fields are mostly shared but reordered, including:
+
+- Name fields
+- `gender`
+- `party_id`
+- `pob`
+- `hometown`
+- `date_of_death`
+- `is_dead`
+- `native_of`
+- `occupation`
+- Notes and pronunciation
+
+This is a significant compatibility issue because birth date, religion, and race would be lost if the first schema were reduced to the displayed 2026 schema.
+
+### `member_office_status.csv`
+
+The 2026 version adds:
+
+- `current_status_name`
+
+### `member_office.csv`
+
+The 2016 directory includes:
+
+- `term_id`
+
+The 2026 version instead adds:
+
+- `seniority_rank`
+- `member_office_outstand_status_id`
+- `departure_announced`
+- `updated_at`
+
+The sample also shows changed end dates and statuses, consistent with a later data snapshot.
+
+### `member_party.csv`
+
+The 2026 version adds:
+
+- `party_caucuses_with_id`
+
+The samples also use different open-ended date conventions:
+
+- First: `2030-01-01`
+- 2026: `2100-01-01`
+
+These appear to be sentinel dates rather than literal known end dates and should be normalized before analysis.
+
+### `member.csv`
+
+The 2016 directory contains:
+
+- `member_id`
+- `first_name`
+- `last_name`
+- `suffix`
+- `core_person_id`
+- `bioguide_id`
+
+The 2026 version removes the duplicated name fields and adds:
+
+- `description`
+- `personal_bio`
+- `lis_member_id`
+- `icpsr_id`
+
+Names in the 2026 schema should likely be retrieved by joining `member.core_person_id` to `core_person.csv`.
+
+### `office.csv`
+
+The 2016 directory includes the office `name` directly.
+
+The 2026 version does not show `name`, but adds:
+
+- `congress_committee_code`
+- `senate_class`
+- `is_vacant`
+- `vacancy_start_date`
+- `office_holder`
+
+This may require joining through `core_organization_id` to obtain the organization or office name.
+
+### `party.csv`
+
+The 2026 version adds:
+
+- `is_fusion`
+
+### `person_contact.csv`
+
+The first version includes:
+
+- `contact_note`
+
+The 2026 version replaces or omits that field and adds:
+
+- `updated_at`
+
+### `person_education.csv`
+
+The 2026 version adds:
+
+- `person_education_level_id`
+- `updated_at`
+
+It also has a corresponding new lookup table, `person_education_level.csv`.
+
+### `person_interest.csv`
+
+The 2016 directory includes:
+
+- `kind`
+
+The 2026 version omits `kind` and adds:
+
+- `updated_at`
+
+### `person_marital_status.csv`
+
+The 2016 directory includes:
+
+- `children_name`
+
+That field is absent from the printed 2026 schema. The remaining fields are largely shared.
+
+### `person_organization.csv`
+
+The 2016 directory includes:
+
+- `note`
+
+The 2026 version adds:
+
+- `core_organization_alias_id`
+- `is_current`
+- `updated_at`
+
+Most relationship, date, position, rank, and organization fields are shared, though ordered differently.
+
+### `state.csv`
+
+The 2016 directory includes:
+
+- `ap_abbr`
+
+The 2026 version does not show that field.
+
+### `term.csv`
+
+The 2026 version adds:
+
+- `election_date`
+- `senate_class_election`
+
+## Structural similarities
+
+Both datasets use a conventional relational design:
+
+- Surrogate primary keys generally end in `_id`.
+- Foreign keys use the referenced entity’s identifier name.
+- `core_person_id` is the central person key.
+- `core_organization_id` is the central organization key.
+- Lookup tables define categories such as party, office type, relationship type, language, and marital status.
+- Junction or history tables model many-to-many and time-dependent relationships.
+- Dates are generally stored in `start_date` and `end_date` fields.
+- Boolean values appear as `t` and `f`.
+- Missing values appear as either `NA` or blank strings in the R output.
+
+## Data-quality and import considerations
+
+### Partial dates
+
+Many fields contain values such as:
+
+```text
+1995-00-00
+1981-00-00
+2006-05-00
+```
+
+These are not valid standard R `Date` values. They encode incomplete dates and should initially remain character strings or be parsed into separate year, month, and day components.
+
+### Missing-value representation
+
+Blank strings and `NA` both appear. Import code should normalize them deliberately:
+
+```r
+readr::read_csv(file, na = c("", "NA"))
+```
+
+This may need refinement if blank text has a meaningful distinction from unknown values.
+
+### Sentinel end dates
+
+Dates such as `2030-01-01` and `2100-01-01` likely indicate “current” or “open-ended.” They should not be treated as actual expected termination dates without confirming the vendor’s documentation.
+
+### Duplicate-name repair
+
+`core_organization_id.1` in the first `award.csv` looks like an automatically repaired duplicate column name. Its provenance should be checked before renaming or joining.
+
+### Personally identifying contact data
+
+Files such as `person_contact.csv` and `office_member_address.csv` contain email addresses, phone numbers, and addresses. Their use and publication may require additional privacy review even when the records concern public or professional contacts.
+
+## Bottom line
+
+The 2026 directory is not merely an updated copy of the 2016 directory. It appears to be a **newer and broader schema version** with:
+
+- More auditing metadata
+- Richer biographies and identifiers
+- Member leadership history
+- Staff roles and policy assignments
+- Organization relationships and contacts
+- Office addresses
+- Person photos
+- New salary-history structures
+
+The 2016 directory retains several fields and tables that are missing or redesigned in the 2026 version, especially:
+
+- Detailed personnel compensation
+- Salary-title and title-group lookups
+- Staffer records
+- Reporting periods
+- Race, religion, and country lookups
+- Birth dates and selected demographic keys
+
+Combining the directories safely will require a **table-by-table crosswalk**, rather than simply appending files with matching names.

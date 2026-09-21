@@ -1,0 +1,30 @@
+library(scales)
+library(here)
+
+# table formatting
+library(tinytable)
+
+if (isTRUE(getOption("knitr.in.progress"))) {
+# cache files in cache folder
+input_file <- knitr::current_input()
+doc_name <- tools::file_path_sans_ext(basename(input_file))
+knitr::opts_chunk$set(
+  cache.path = file.path(".cache", doc_name, ""),
+  out.width = "100%",
+  warning = F,
+  message = F)
+}
+
+# inline numbers round to 2, comma at thousands
+inline <- function(x) {
+  if (is.na(as.numeric(x))) {
+    return (x)
+  } else
+    return (as.numeric(x) |>
+              round(2) |>
+              format(big.mark=",")
+    )
+}
+
+knitr::knit_hooks$set(inline = inline)
+
