@@ -2,10 +2,25 @@
 library(tidyverse)
 library(tidyr)
 
-titles_raw <- here::here("data", "legistorm", "Legistorm Data Purchase", "salary_title.csv") |> read_csv()
+# # michigan 2016 purchase
+# titles_raw <- here::here("data", "legistorm", "Legistorm Data Purchase", "salary_title.csv") |> read_csv() |>
+#   rename(position_title = full_name)
+#
+# # wisconsin 2026 purchase
+# titles_raw <- here::here("data", "legistorm", "LegistormDataWisconsin2026", "Data", "salary_auto_history.csv") |> read_csv() |>
+#   rename(position_title = title)
 
-titles_raw <- here::here("data", "legistorm", "LegistormDataWisconsin2026", "Data", "salary_auto_history.csv") |> read_csv() |>
-  rename(full_name = title)
+data_dir <- here(
+  "data",
+  "legistorm",
+  "LegistormDataWisconsin2026",
+  "Data"
+)
+
+titles_raw <- here::here(data_dir, "congressional_history.csv") |> read.csv() |>
+  rename(position_title = position_title)
+
+# titles_raw$start_date |> unique()
 
 head(titles_raw)
 
@@ -26,7 +41,7 @@ head(titles_raw)
 # Replace `job_title` with your actual title-column name.
 titles_clean <- titles_raw %>%
   mutate(
-    title_original = full_name,
+    title_original = position_title,
     title_original = str_squish(title_original)
   ) %>%
   separate_wider_delim(
@@ -80,7 +95,7 @@ titles_clean <- titles_raw %>%
 #     # Intergovernmental, oversight, and investigations
 #     str_detect(
 # x,
-# "\\b(intergovernmental|oversight|investigations?|inspectors?|federal liaison|government and community relations)\\b" |> str_remove_all("\n") |> str_squish()
+# "\\b(intergovernmental|oversight|investigations?|inspectors?|federal liaison|government and community relations)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
 #     ) ~ "intergovernmental",
 #
 #     # Legislative leadership
@@ -90,7 +105,7 @@ titles_clean <- titles_raw %>%
 #     # Legislative staff
 #     str_detect(
 # x,
-# "\\b(senior legislative assistant|legislative assistant|legislative correspondent|legislative counsel)\\b" |> str_remove_all("\n") |> str_squish()
+# "\\b(senior legislative assistant|legislative assistant|legislative correspondent|legislative counsel)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
 #     ) ~ "legislative: legislative staff",
 #
 #     # Broad legislative rule
@@ -104,59 +119,59 @@ titles_clean <- titles_raw %>%
 #     # Military, veterans, maritime transportation, and Coast Guard
 #     str_detect(
 # x,
-# "\\b(veterans affairs|military|coast guard|maritime transportation)\\b" |> str_remove_all("\n") |> str_squish()
+# "\\b(veterans affairs|military|coast guard|maritime transportation)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
 #     ) ~ "policy: military and veterans affairs",
 #
 #     # Agriculture
-#     str_detect(x, "\\b(agriculture|agricultural)\\b" |> str_remove_all("\n") |> str_squish() ) ~
+#     str_detect(x, "\\b(agriculture|agricultural)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")  ) ~
 # "policy: agriculture",
 #
 #     # Environment and energy
 #     str_detect(
 # x,
-# "\\b(conservation|sustainability|environmental|environment|natural resources|energy subcommittee)\\b" |> str_remove_all("\n") |> str_squish()
+# "\\b(conservation|sustainability|environmental|environment|natural resources|energy subcommittee)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
 #     ) ~ "policy: environment",
 #
 #     # Health
 #     str_detect(
 # x,
-# "\\b(health subcommittee|health and welfare|health policy)\\b" |> str_remove_all("\n") |> str_squish()
+# "\\b(health subcommittee|health and welfare|health policy)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
 #     ) ~ "policy: health",
 #
 #     # Education policy
 #     str_detect(
 # x,
-# "\\b(education subcommittee|education policy)\\b" |> str_remove_all("\n") |> str_squish()
+# "\\b(education subcommittee|education policy)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
 #     ) ~ "policy: education",
 #
 #     # Technology, innovation, science, and space policy
 #     str_detect(
 # x,
-# "\\b(technology and innovation|technology subcommittee|space subcommittee|staff scientist)\\b" |> str_remove_all("\n") |> str_squish()
+# "\\b(technology and innovation|technology subcommittee|space subcommittee|staff scientist)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
 #     ) ~ "policy: science and technology",
 #
 #     # Foreign policy
 #     str_detect(
 # x,
-# "\\b(war|defense|foreign affairs|asian|international)\\b" |> str_remove_all("\n") |> str_squish()
+# "\\b(war|defense|foreign affairs|asian|international)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
 #     ) ~ "policy: foreign",
 #
 #     # Economic development and economics
 #     str_detect(
 # x,
-# "\\b(economic development|economist|economic policy)\\b" |> str_remove_all("\n") |> str_squish()
+# "\\b(economic development|economist|economic policy)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
 #     ) ~ "policy: economic",
 #
 #     # Professional committee staff
 #     str_detect(
 # x,
-# "\\b(professional staff|professional staff member|senior professional staff|staff associate)\\b" |> str_remove_all("\n") |> str_squish()
+# "\\b(professional staff|professional staff member|senior professional staff|staff associate)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
 #     ) ~ "policy: professional committee staff",
 #
 #     # Investigative staff
 #     str_detect(
 # x,
-# "\\b(investigator|auditor)\\b" |> str_remove_all("\n") |> str_squish()
+# "\\b(investigator|auditor)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
 #     ) ~ "policy: oversight and investigations",
 #
 #     # Policy leadership
@@ -166,143 +181,143 @@ titles_clean <- titles_raw %>%
 #     # General policy
 #     str_detect(
 # x,
-# "\\b(policy advisor|policy adviser|policy|librarian|committee|counsel|research|researcher|analyst|attorney)\\b" |> str_remove_all("\n") |> str_squish()
+# "\\b(policy advisor|policy adviser|policy|librarian|committee|counsel|research|researcher|analyst|attorney)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
 #     ) ~ "policy: policy general",
 #
 #     # Temporary positions
 #     str_detect(
 # x,
-# "\\b(intern|internship|fellow|fellowship|page)\\b" |> str_remove_all("\n") |> str_squish()
+# "\\b(intern|internship|fellow|fellowship|page)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
 #     ) ~ "temporary: intern or fellow",
 #
 #     # Constituent casework
 #     str_detect(
 # x,
-# "\\b(caseworker|case work|casework|case manager|constituent services?|constituent advocate|constituency|constituent liaison|veterans? services?|immigration services?|immigration specialist)\\b" |> str_remove_all("\n") |> str_squish()
+# "\\b(caseworker|case work|casework|case manager|constituent services?|constituent advocate|constituency|constituent liaison|veterans? services?|immigration services?|immigration specialist)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
 #     ) ~ "constituent casework: casework",
 #
 #     # Correspondence
 #     str_detect(
 # x,
-# "\\b(director of correspondence|correspondence director|correspondence manager|correspondence specialist|correspondent specialist|deputy director correspondence)\\b" |> str_remove_all("\n") |> str_squish()
+# "\\b(director of correspondence|correspondence director|correspondence manager|correspondence specialist|correspondent specialist|deputy director correspondence)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
 #     ) ~ "communications: correspondence",
 #
 #     # Speechwriting
 #     str_detect(
 # x,
-# "\\b(speechwriter|speech writer|speechwriting)\\b" |> str_remove_all("\n") |> str_squish()
+# "\\b(speechwriter|speech writer|speechwriting)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
 #     ) ~ "communications: speechwriting",
 #
 #     # Press and communications
 #     str_detect(
 # x,
-# "\\b(communications? director|communications? deputy|communications? advisor|broadcast|communications?|communications? specialist|communications? assistant|press secretary|external affairs|media|press|transition|deputy press secretary|spokesperson|spokesman)\\b" |> str_remove_all("\n") |> str_squish()
+# "\\b(communications? director|communications? deputy|communications? advisor|broadcast|communications?|communications? specialist|communications? assistant|press secretary|external affairs|media|press|transition|deputy press secretary|spokesperson|spokesman)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
 #     ) ~ "communications: press and communications",
 #
 #     # Digital and creative
 #     str_detect(
 # x,
-# "\\b(digital|social media|webmaster|reprographics|imaging|photography|videographer|video editor|photographer|graphic design|graphics?|art director|web|producer|radio technician|editor|public affairs)\\b" |> str_remove_all("\n") |> str_squish()
+# "\\b(digital|social media|webmaster|reprographics|imaging|photography|videographer|video editor|photographer|graphic design|graphics?|art director|web|producer|radio technician|editor|public affairs)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
 #     ) ~ "communications: digital and creative",
 #
 #     # Leadership: senior office leadership
 #     str_detect(
 # x,
-# "\\b(chief of staff|staff director|executive director)\\b" |> str_remove_all("\n") |> str_squish()
+# "\\b(chief of staff|staff director|executive director)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
 #     ) ~ "leadership team: senior office leadership",
 #
 #     # Leadership: policy
 #     str_detect(
 # x,
-# "\\b(chief deputy|chief counsel|general counsel)\\b" |> str_remove_all("\n") |> str_squish()
+# "\\b(chief deputy|chief counsel|general counsel)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
 #     ) ~ "leadership team: policy leadership",
 #
 #     # Leadership: district
 #     str_detect(
 # x,
-# "\\b(district director|state director|regional director|manhattan director)\\b" |> str_remove_all("\n") |> str_squish()
+# "\\b(district director|state director|regional director|manhattan director)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
 #     ) ~ "leadership team: district leadership",
 #
 #     # Advance and protocol
 #     str_detect(
 # x,
-# "\\b(advance assistant|advance associate|advance coordinator|advance deputy|advance director|advance representative|director of protocol|protocol director)\\b" |> str_remove_all("\n") |> str_squish()
+# "\\b(advance assistant|advance associate|advance coordinator|advance deputy|advance director|advance representative|director of protocol|protocol director)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
 #     ) ~ "leadership team: advance and protocol",
 #
 #     # District outreach and field
 #     str_detect(
 # x,
-# "\\b(district|field|area|region|regional|community liaison|outreach|central|eastern|western|southern|northern|business liaison|community development|manhattan)\\b" |> str_remove_all("\n") |> str_squish()
-#     ) ~ "district team: outreach and field",
+# "\\b(district|field|area|region|regional|community liaison|outreach|central|eastern|western|southern|northern|business liaison|community development|manhattan)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
+#     ) ~ "district: outreach and field",
 #
 #     # Education and training
 #     str_detect(
 # x,
-# "\\b(teacher|instructor|academic|academy|instructional|education and training|strategic learning and development|training and development)\\b" |> str_remove_all("\n") |> str_squish()
+# "\\b(teacher|instructor|academic|academy|instructional|education and training|strategic learning and development|training and development)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
 #     ) ~ "instruction",
 #
 #     # Information technology and systems
 #     str_detect(
 # x,
-# "\\b(computer specialist|systems?|telecommunications services|systems development services|network|information technology|it director|database|business continuity)\\b" |> str_remove_all("\n") |> str_squish()
+# "\\b(computer specialist|systems?|telecommunications services|systems development services|network|information technology|it director|database|business continuity)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
 #     ) ~ "administrative: information technology",
 #
 #     # Programs and projects
 #     str_detect(
 # x,
-# "\\b(program manager|senior program manager|project assistant|project director|project manager|projects assistant|projects director|special projects coordinator|director of special projects)\\b" |> str_remove_all("\n") |> str_squish()
+# "\\b(program manager|senior program manager|project assistant|project director|project manager|projects assistant|projects director|special projects coordinator|director of special projects)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
 #     ) ~ "administrative: programs and projects",
 #
 #     # Mailroom and inventory
 #     str_detect(
 # x,
-# "\\b(mailroom assistant|inventory specialist|manager textiles|laborer)\\b" |> str_remove_all("\n") |> str_squish()
+# "\\b(mailroom assistant|inventory specialist|manager textiles|laborer)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
 #     ) ~ "administrative: facilities and logistics",
 #
 #     # Administrative office operations
 #     str_detect(
 # x,
-# "\\b(chief administrative officer|administrative director|administrator|administrator assistant|administration|information|scheduling|accounts|payable|acquisitions?|appointments?|administrative assistant|office manager|office administrator|office director|account|accountant|accounting|enterprise|retail|logistics|equipment|technical|grants|professional assistant|operations? director|scheduler|scheduling director|executive assistant|trip coordinator|vendor|visitor|compensation|stationery|staff assistant|receptionist|systems administrator|captioning|workflow|office coordinator|personal assistant|secretary|printing|pay|staff professional|contract|audit|contracting|records?|payroll|finance|financial|budget|human resources?|d c office|member services|group assistant|support|contractor|engineering|engineer|desk|administrative|operations)\\b" |> str_remove_all("\n") |> str_squish()
+# "\\b(chief administrative officer|administrative director|administrator|administrator assistant|administration|information|scheduling|accounts|payable|acquisitions?|appointments?|administrative assistant|office manager|office administrator|office director|account|accountant|accounting|enterprise|retail|logistics|equipment|technical|grants|professional assistant|operations? director|scheduler|scheduling director|executive assistant|trip coordinator|vendor|visitor|compensation|stationery|staff assistant|receptionist|systems administrator|captioning|workflow|office coordinator|personal assistant|secretary|printing|pay|staff professional|contract|audit|contracting|records?|payroll|finance|financial|budget|human resources?|d c office|member services|group assistant|support|contractor|engineering|engineer|desk|administrative|operations)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
 #     ) ~ "administrative: office operations",
 #
 #     # Generic special assistants and congressional assistants
 #     str_detect(
 # x,
-# "\\b(special assistant|congressional assistant|advance assistant)\\b" |> str_remove_all("\n") |> str_squish()
+# "\\b(special assistant|congressional assistant|advance assistant)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
 #     ) ~ "administrative: executive and staff support",
 #
 #     # Support services
 #     str_detect(
 # x,
-# "\\b(driver|chauffeur|security|facilities|mail|messenger|aide|police|doorkeeper|operator|foreman|journeyman|cloakroom|special events|assistant to|assist to|child care|credentialing|counselor|services|technician|supervisor)\\b" |> str_remove_all("\n") |> str_squish()
+# "\\b(driver|chauffeur|security|facilities|mail|messenger|aide|police|doorkeeper|operator|foreman|journeyman|cloakroom|special events|assistant to|assist to|child care|credentialing|counselor|services|technician|supervisor)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
 #     ) ~ "administrative: support services",
 #
 #     # Special institutional roles
 #     str_detect(
 # x,
-# "\\b(chaplain|clerk|floor|sergeant|private first class|apprentice|archival|archives|archivist|conservator|bookbinder|curator|guide|tours|parliamentarian|historian)\\b" |> str_remove_all("\n") |> str_squish()
+# "\\b(chaplain|clerk|floor|sergeant|private first class|apprentice|archival|archives|archivist|conservator|bookbinder|curator|guide|tours|parliamentarian|historian)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
 #     ) ~ "administrative: other",
 #
 #     # Shared staff
 #     str_detect(
 # x,
-# "\\b(shared staff|shared staffer|shared employee)\\b" |> str_remove_all("\n") |> str_squish()
+# "\\b(shared staff|shared staffer|shared employee)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
 #     ) ~ "unclear: shared staff",
 #
 #     # Generic staff labels
 #     str_detect(
 # x,
-# "\\b(senior staff associate|staff associate|professional staff|professional staff member|senior professional staff)\\b" |> str_remove_all("\n") |> str_squish()
+# "\\b(senior staff associate|staff associate|professional staff|professional staff member|senior professional staff)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
 #     ) ~ "policy: professional committee staff",
 #
 #     # Party roles
-#     str_detect(x, "\\b(democratic|republican|majority|minority)\\b" |> str_remove_all("\n") |> str_squish() ) ~
+#     str_detect(x, "\\b(democratic|republican|majority|minority)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")  ) ~
 # "party: other",
 #
 #     # Other expenses
 #     str_detect(
 # x,
-# "\\b(canceled check|stop payment|overpayment|allowance|consultant)\\b" |> str_remove_all("\n") |> str_squish()
+# "\\b(canceled check|stop payment|overpayment|allowance|consultant)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
 #     ) ~ "other expenses",
 #
 #     # Unclear generic titles
@@ -313,7 +328,7 @@ titles_clean <- titles_raw %>%
 #
 #     str_detect(
 # x,
-# "\\b(shared staff full committee|shared employee)\\b" |> str_remove_all("\n") |> str_squish()
+# "\\b(shared staff full committee|shared employee)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
 #     ) ~ "unclear",
 #
 #     TRUE ~ NA_character_
@@ -344,13 +359,13 @@ classify_title <- function(x) {
       x,
       "\\b(canceled check|stop payment|overpayment|allowance|consultant|\
 overtime payment|payment from prior reporting period|lump sum annual leave|\
-unpaid leave|lwop employee|expense transfer)\\b" |> str_remove_all("\n") |> str_squish()
+unpaid leave|lwop employee|expense transfer)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "other expenses",
 
     # Other expenses
     str_detect(
       x,
-      "\\b(canceled check|stop payment|overpayment|allowance|consultant|unpaid leave)\\b" |> str_remove_all("\n") |> str_squish()
+      "\\b(canceled check|stop payment|overpayment|allowance|consultant|unpaid leave)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "other expenses",
 
     # ------------------------------------------------------------------
@@ -359,14 +374,14 @@ unpaid leave|lwop employee|expense transfer)\\b" |> str_remove_all("\n") |> str_
     # Temporary positions
     str_detect(
       x,
-      "\\b(intern|internship|fellow|fellowship|page|graduate|temporary|temp)\\b" |> str_remove_all("\n") |> str_squish()
+      "\\b(intern|internn|internship|fellow|fellowship|page|graduate|temporary|temp|summer seminar participant)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "temporary: intern or fellow",
 
     str_detect(
       x,
-      "\\b(intern|internship|fellow|fellowship|page|extern|\
+      "\\b(intern|internship|fellow|fellowship|page|extern|student ambassador|
 temporary|part time|summer associate|spring associate|fall associate|\
-graduate associate|graduate student|student assistant|special government employee)\\b" |> str_remove_all("\n") |> str_squish()
+graduate associate|graduate student|student assistant|special government employee)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "temporary: intern or fellow",
 
     # ------------------------------------------------------------------
@@ -376,7 +391,9 @@ graduate associate|graduate student|student assistant|special government employe
     str_detect(
       x,
       "\\b(intergovernmental|oversight|investigations?|investigative|inspectors?|
-federal liaison|government and community relations|regulartory|regulatory|government relations)\\b" |> str_remove_all("\n") |> str_squish()
+      detailee|
+      public advocacy|public advocate|advocacy director|
+federal liaison|government and community relations|regulartory|regulatory|government relations)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "intergovernmental",
 
     str_detect(
@@ -386,9 +403,9 @@ governmental affairs|government affairs|governmental relations|\
 government relations|congressional relations|congressional liaison|\
 federal liaison|federal funding liasion|gpo liaison|\
 congressional delegation representative|oversight|investigations?|\
-judiciary|\
+judiciary|nominations|
 investigative|investigator|inspectors?|auditor|detective|special agent|\
-specialist agent|law enforcement liaison|government performance task force)\\b" |> str_remove_all("\n") |> str_squish()
+specialist agent|law enforcement liaison|government performance task force)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "intergovernmental",
 
     # ------------------------------------------------------------------
@@ -401,74 +418,93 @@ specialist agent|law enforcement liaison|government performance task force)\\b" 
     # Military, veterans, maritime transportation, and Coast Guard
     str_detect(
       x,
-      "\\b(veterans affairs|military|coast guard|maritime transportation)\\b" |> str_remove_all("\n") |> str_squish()
+      "\\b(veterans affairs|military|coast guard|maritime transportation)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "policy: military and veterans affairs",
 
     # Agriculture
-    str_detect(x, "\\b(agriculture|agricultural)\\b" |> str_remove_all("\n") |> str_squish() ) ~
+    str_detect(x, "\\b(agriculture|agricultural)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")  ) ~
       "policy: agriculture",
 
     # Environment and energy
     str_detect(
       x,
-      "\\b(conservation|sustainability|environmental|environment|natural resources|natural resource|energy subcommittee|great lakes)\\b" |> str_remove_all("\n") |> str_squish()
+      "\\b(conservation|sustainability|environmental|environment|
+      fisheries|oceans|water|
+      natural resources|natural resource|energy subcommittee|great lakes)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "policy: environment",
 
     # Health
     str_detect(
       x,
-      "\\b(health subcommittee|health and welfare|health policy)\\b" |> str_remove_all("\n") |> str_squish()
+      "\\b(health subcommittee|health and welfare|health policy|acf|coronavirus)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "policy: health",
 
     # Education policy
     str_detect(
       x,
-      "\\b(education subcommittee|education policy)\\b" |> str_remove_all("\n") |> str_squish()
+      "\\b(education subcommittee|education policy)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "policy: education",
 
     # Technology, innovation, science, and space policy
     str_detect(
       x,
-      "\\b(technology and innovation|technology subcommittee|space subcommittee|staff scientist)\\b" |> str_remove_all("\n") |> str_squish()
+      "\\b(technology and innovation|technology subcommittee|space subcommittee|staff scientist)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "policy: science and technology",
 
     # Foreign policy
     str_detect(
       x,
-      "\\b(war|defense|foreign affairs|asian|international)\\b" |> str_remove_all("\n") |> str_squish()
+      "\\b(war|defense|foreign affairs|foreign assistance|
+      asia|asian|near east adviser|
+      international)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "policy: foreign",
 
 
     # Economic development and economics
     str_detect(
       x,
-      "\\b(immigration)\\b" |> str_remove_all("\n") |> str_squish()
+      "\\b(immigration)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "policy: immigration",
 
     # Economic development and economics
     str_detect(
       x,
-      "\\b(economic development|economist|economic policy)\\b" |> str_remove_all("\n") |> str_squish()
+      "\\b(economic development|economist|economic policy|trade associate)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
+    ) ~ "policy: economic",
+
+    # Economic development and economics
+    str_detect(
+      x,
+      "\\b(aviation advisor|transportation advisor)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "policy: economic",
 
 
     # Investigative staff
     str_detect(
       x,
-      "\\b(investigator|auditor)\\b" |> str_remove_all("\n") |> str_squish()
+      "\\b(investigator|auditor)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "policy: oversight and investigations",
 
-    # general staff
+    # general policy advisors
     str_detect(
       x,
-      "\\b(advisor to|issues)\\b" |> str_remove_all("\n") |> str_squish()
+      "\\b(advisor to|adviser to|aviation adviser|associate to|at large adviser|issues|analysis adviser|analysis director|principal adviser|political adviser|
+      analytics head|
+      confidential|strategist|strategic adviser|strategic director)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "policy: other advisors",
+
+    # general committee staff
+    str_detect(
+      x,
+      "\\b(shared staff full committee|staff member to the ranking member shared)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
+    ) ~ "policy: committee shared staff",
+
 
     #### MORE LEGISLTITIVE
     str_detect(
       x,
       "\\b(legislative director|director of legislation|votes director|\
-whip director|caucus planning director|subcommittee director)\\b" |> str_remove_all("\n") |> str_squish()
+whip director|caucus planning director|subcommittee director)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "legislative: legislative leadership",
 
     str_detect(
@@ -477,13 +513,13 @@ whip director|caucus planning director|subcommittee director)\\b" |> str_remove_
 legislative assistant|legislative correspondent|legislative counsel|\
 chamber legislation specialist|medical legislation|parliamentary assistant|\
 quorum specialist|rules associate|subcommittee assistant|\
-subcommittee staff member|subcommittee statistician)\\b" |> str_remove_all("\n") |> str_squish()
+subcommittee staff member|subcommittee statistician)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "legislative: legislative staff",
 
     str_detect(
       x,
       "\\b(legislative|legislation|chamber legislation|votes|recovery act|\
-whip coordinator|whip liaison|deputy whip staffer)\\b" |> str_remove_all("\n") |> str_squish()
+whip coordinator|whip liaison|deputy whip staffer)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "legislative: other legislative",
 
     # Legislative leadership
@@ -493,7 +529,7 @@ whip coordinator|whip liaison|deputy whip staffer)\\b" |> str_remove_all("\n") |
     # Legislative staff
     str_detect(
       x,
-      "\\b(senior legislative assistant|legislative assistant|legislative correspondent|legislative counsel)\\b" |> str_remove_all("\n") |> str_squish()
+      "\\b(senior legislative assistant|legislative assistant|legislative correspondent|legislative counsel)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "legislative: legislative staff",
 
     # Broad legislative rule
@@ -501,115 +537,13 @@ whip coordinator|whip liaison|deputy whip staffer)\\b" |> str_remove_all("\n") |
       "legislative: other legislative",
 
     # ------------------------------------------------------------------
-    # Specific policy areas
-    # ------------------------------------------------------------------
-    str_detect(x, "\\bappropriations?\\b") ~
-      "policy: appropriations",
-
-    str_detect(
-      x,
-      "\\b(veterans?|military|armed services|coast guard|\
-maritime transportation|defense)\\b" |> str_remove_all("\n") |> str_squish()
-    ) ~ "policy: military and veterans affairs",
-
-    str_detect(
-      x,
-      "\\b(agriculture|agricultural|dairy|farm|farming)\\b" |> str_remove_all("\n") |> str_squish()
-    ) ~ "policy: agriculture",
-
-    str_detect(
-      x,
-      "\\b(conservation|sustainability|environmental|environment|\
-natural resources?|public lands?|forest resources?|energy|\
-green the capitol|interior specialist|sportsman)\\b" |> str_remove_all("\n") |> str_squish()
-    ) ~ "policy: environment",
-
-    str_detect(
-      x,
-      "\\b(health|healthcare|health care|medical|disability|\
-wounded warrior|occupational health)\\b" |> str_remove_all("\n") |> str_squish()
-    ) ~ "policy: health",
-
-    str_detect(
-      x,
-      "\\b(education|higher education|k 12|children s issues|\
-workforce development)\\b" |> str_remove_all("\n") |> str_squish()
-    ) ~ "policy: education",
-
-    str_detect(
-      x,
-      "\\b(science|space|aeronautics|technology assessment|\
-technology and innovation)\\b" |> str_remove_all("\n") |> str_squish()
-    ) ~ "policy: science and technology",
-
-    str_detect(
-      x,
-      "\\b(foreign affairs|foreign relations|african affairs|\
-international|asian|europe|eurasia|counterterrorism|intelligence|\
-threat assessment|war)\\b" |> str_remove_all("\n") |> str_squish()
-    ) ~ "policy: foreign",
-
-    str_detect(
-      x,
-      "\\b(economic|economics|economist|macroeconomist|tax|\
-banking|business affairs|commerce and industry|trade adviser|\
-business development|economic recovery|revenues and economics|\
-small business|foreclosure mitigation|labor and economic)\\b" |> str_remove_all("\n") |> str_squish()
-    ) ~ "policy: economic",
-
-    str_detect(
-      x,
-      "\\b(transportation|transit|housing|rural development)\\b" |> str_remove_all("\n") |> str_squish()
-    ) ~ "policy: transportation and housing",
-
-    str_detect(
-      x,
-      "\\b(native american|tribal affairs|insular affairs)\\b" |> str_remove_all("\n") |> str_squish()
-    ) ~ "policy: native and tribal affairs",
-
-
-    str_detect(
-      x,
-      "\\b(immigration reform)\\b" |> str_remove_all("\n") |> str_squish()
-    ) ~ "policy: immigration",
-
-    # Policy leadership
-    str_detect(x, "\\b(policy director|political director)\\b" |> str_remove_all("\n") |> str_squish() ) ~
-      "policy: policy director",
-
-    # General policy
-    str_detect(
-      x,
-      "\\b(policy advisor|policy adviser|policy|librarian|committee|subcommittee|counsel|research|researcher|analyst|attorney|library)\\b" |> str_remove_all("\n") |> str_squish()
-    ) ~ "policy: policy general",
-
-
-
-    # Professional committee and policy staff
-    str_detect(
-      x,
-      "\\b(policy director|policy advisor|policy adviser|policy analyst|task force|\
-issues coordinator|issues director|issues manager|\
-senior strategist|adviser on|adviser for|tax adviser|\
-economic adviser|education adviser|science adviser|energy adviser|\
-health adviser|healthcare adviser|trade adviser|transportation adviser|\
-immigration adviser|legal adviser|tribal affairs adviser|\
-counterterrorism adviser|benefits adviser|housing adviser|\
-public health adviser|chief scientist|chief macroeconomist|\
-research|researcher|economist|analyst|attorney|counsel|librarian)\\b" |> str_remove_all("\n") |> str_squish()
-    ) ~ "policy: policy general",
-
-    # POSSIBLE ADDITIONS
-    # professional staff|professional member|professional banking staff|\
-    # associate staff aviation|special bipartisan staff member|\
-
-    # ------------------------------------------------------------------
     # Constituent casework
     # ------------------------------------------------------------------
     str_detect(
       x,
       "\\b(caseworker|case work|casework|case management|case manager|constituent services?|federal aid assistant|\
-federal aid|constituent advocate|constituency|constituent liaison|veterans? services?|immigration services?|immigration specialist|case management)\\b" |> str_remove_all("\n") |> str_squish()
+      ombudsperson|intake|case|
+federal aid|constituent advocate|constituency|constituent liaison|veterans? services?|immigration services?|immigration specialist|case management)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "constituent casework: casework",
 
     # Constituent casework
@@ -625,13 +559,13 @@ immigration specialist|immigration director|immigrant affairs|\
 immigration affairs|immigration issues|\
 social worker|social work coordinator|ombudsman|community ombudsman|\
 health care advocate|veterans advocate|
-federal aid assistant|federal programs assistant)\\b" |> str_remove_all("\n") |> str_squish()
+federal aid assistant|federal programs assistant)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "constituent casework: casework",
 
     # Constituent correspondence is retained as casework when explicit
     str_detect(
       x,
-      "\\b(constituent correspondent|constituent correspondence)\\b" |> str_remove_all("\n") |> str_squish()
+      "\\b(constituent correspondent|constituent correspondence)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "constituent casework: correspondence",
 
     #TODO RECONCILE ABOVE AND BELOW CORRESPONDENCE
@@ -641,40 +575,38 @@ federal aid assistant|federal programs assistant)\\b" |> str_remove_all("\n") |>
     # Correspondence
     str_detect(
       x,
-      "\\b(director of correspondence|correspondence director|correspondence manager|correspondence specialist|correspondent specialist|deputy director correspondence)\\b" |> str_remove_all("\n") |> str_squish()
+      "\\b(director of correspondence|correspondence director|correspondence manager|correspondence specialist|correspondent specialist|deputy director correspondence)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "communications: correspondence",
 
     # Speechwriting
     str_detect(
       x,
-      "\\b(speechwriter|speech writer|speechwriting)\\b" |> str_remove_all("\n") |> str_squish()
+      "\\b(speechwriter|speech writer|speechwriting)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "communications: speechwriting",
 
     # Press and communications
     str_detect(
       x,
-      "\\b(communications? director|communications? deputy|communications? advisor|broadcast|news|marketing|\
-publications|publication|\
-communications?|communications? specialist|communications? assistant|press secretary|external affairs|media|press|transition|deputy press secretary|spokesperson|spokesman|public liaison|public relations)\\b" |> str_remove_all("\n") |> str_squish()
+      "\\b(communications? director|messaging|communications? deputy|communications? advisor|broadcast|news|marketing|theme team|publications|writing|
+communications?|communications? specialist|communications? assistant|press secretary|external affairs|media|press|transition|deputy press secretary|spokesperson|spokesman|public liaison|public relations)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "communications: press and communications",
 
     # Digital and creative
     str_detect(
       x,
-      "\\b(digital|social media|webmaster|reprographics|imaging|creative|design|\
-production|\
-photography|videographer|video editor|photographer|graphic design|graphics?|art director|web|producer|radio technician|editor|public affairs)\\b" |> str_remove_all("\n") |> str_squish()
+      "\\b(digital|social media|webmaster|reprographics|imaging|creative|design|social platforms|production|engagement|visual|content|studio|publication|
+photography|videographer|video editor|photographer|graphic design|graphics?|art director|web|producer|radio technician|editor|public affairs)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "communications: digital and creative",
 
     str_detect(
       x,
-      "\\b(correspondence|correspondent|personal correspondent)\\b" |> str_remove_all("\n") |> str_squish()
+      "\\b(correspondence|correspondent|personal correspondent)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "communications: correspondence",
 
     str_detect(
       x,
       "\\b(speechwriter|speech writer|speechwriting|chief writer|\
-senior writer|staff writer|writer|historical writer)\\b" |> str_remove_all("\n") |> str_squish()
+senior writer|staff writer|writer|historical writer)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "communications: speechwriting and writing",
 
     str_detect(
@@ -683,7 +615,7 @@ senior writer|staff writer|writer|historical writer)\\b" |> str_remove_all("\n")
 public relations|public affairs|external affairs|external relations|\
 publications?|editorial|rapid response|rapid offense|message planning|\
 message event planning|newspaper clipper|creative adviser|\
-creative director|community and content coordinator)\\b" |> str_remove_all("\n") |> str_squish()
+creative director|community and content coordinator)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "communications: press and communications",
 
     str_detect(
@@ -693,9 +625,123 @@ interactive design|user interface|user experience|multimedia|\
 broadcast|radio|television|tv and radio|audio specialist|\
 videographer|video editor|photographer|photography|photo lab|\
 photo studio|photo finisher|graphic design|graphics?|art director|\
-producer|production studio|recording studio|editor|editing|\
-online assistant|cms production|reprographics|imaging)\\b" |> str_remove_all("\n") |> str_squish()
+producer|production studio|recording studio|editor|editing|video|
+online assistant|cms production|reprographics|imaging)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "communications: digital and creative",
+
+    # ------------------------------------------------------------------
+    # Specific policy areas
+    # ------------------------------------------------------------------
+    str_detect(x, "\\bappropriations?\\b") ~
+      "policy: appropriations",
+
+    str_detect(
+      x,
+      "\\b(veterans?|military|armed services|coast guard|\
+maritime transportation|defense)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
+    ) ~ "policy: military and veterans affairs",
+
+    str_detect(
+      x,
+      "\\b(agriculture|agricultural|dairy|farm|farming)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
+    ) ~ "policy: agriculture",
+
+    str_detect(
+      x,
+      "\\b(conservation|sustainability|environmental|environment|climate change adviser|
+natural resources?|public lands?|forest resources?|energy|climate|
+green the capitol|interior specialist|sportsman)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
+    ) ~ "policy: environment",
+
+    str_detect(
+      x,
+      "\\b(health|healthcare|health care|medical|disability|second amendment|
+wounded warrior|occupational health)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
+    ) ~ "policy: health",
+
+    str_detect(
+      x,
+      "\\b(education|higher education|k 12|children s issues|\
+workforce development)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
+    ) ~ "policy: education",
+
+    str_detect(
+      x,
+      "\\b(science|space|aeronautics|technology assessment|\
+technology and innovation)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
+    ) ~ "policy: science and technology",
+
+    str_detect(
+      x,
+      "\\b(foreign affairs|foreign relations|african affairs|\
+international|asian|europe|eurasia|counterterrorism|intelligence|\
+threat assessment|war)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
+    ) ~ "policy: foreign",
+
+    str_detect(
+      x,
+      "\\b(economic|economics|economist|macroeconomist|tax|\
+banking|business affairs|business adviser|
+commerce and industry|trade adviser|\
+business development|economic recovery|revenues and economics|\
+small business|small business adviser|foreclosure mitigation|labor and economic)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
+    ) ~ "policy: economic",
+
+    str_detect(
+      x,
+      "\\b(transportation|transit|housing|rural development)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
+    ) ~ "policy: transportation and housing",
+
+    str_detect(
+      x,
+      "\\b(native american|tribal affairs|insular affairs)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
+    ) ~ "policy: native and tribal affairs",
+
+
+    str_detect(
+      x,
+      "\\b(immigration reform)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
+    ) ~ "policy: immigration",
+
+    # Policy leadership
+    str_detect(x, "\\b(policy director|political director)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")  ) ~
+      "policy: policy director",
+
+
+    # democracy policy
+    str_detect(
+      x,
+      "\\b(civic)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
+    ) ~ "policy: policy general",
+
+
+    # General policy
+    str_detect(
+      x,
+      "\\b(policy advisor|policy adviser|policy|librarian|committee|subcommittee|counsel|research|researcher|analyst|attorney|library)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
+    ) ~ "policy: policy general",
+
+
+
+    # Professional committee and policy staff
+    str_detect(
+      x,
+      "\\b(policy director|policy advisor|policy adviser|policy analyst|task force|\
+issues coordinator|issues director|issues manager|\
+senior strategist|adviser on|adviser for|tax adviser|\
+economic adviser|education adviser|science adviser|energy adviser|\
+health adviser|healthcare adviser|trade adviser|transportation adviser|\
+immigration adviser|legal adviser|tribal affairs adviser|\
+counterterrorism adviser|housing adviser|justice reform|
+public health adviser|chief scientist|chief macroeconomist|\
+research|researcher|economist|analyst|attorney|counsel|librarian)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
+    ) ~ "policy: policy general",
+
+    # POSSIBLE ADDITIONS
+    # professional staff|professional member|professional banking staff|\
+    # associate staff aviation|special bipartisan staff member|\
+
+
 
     # ------------------------------------------------------------------
     # Leadership
@@ -703,27 +749,22 @@ online assistant|cms production|reprographics|imaging)\\b" |> str_remove_all("\n
     # Leadership: senior office leadership
     str_detect(
       x,
-      "\\b(chief of staff|staff director|executive director|washington director)\\b" |> str_remove_all("\n") |> str_squish()
+      "\\b(chief of staff|staff director|executive director|washington director|chief of satff)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "leadership team: senior office leadership",
 
     str_detect(
       x,
-      "\\b(chief of staff|chef of staff|staff director|executive director|chief operating officer|executive officer|managing director|leadership director|chief and director|cao emeritus)\\b" |> str_remove_all("\n") |> str_squish()
+      "\\b(chief of staff|chef of staff|staff director|executive director|chief operating officer|executive officer|managing director|leadership director|chief and director|cao emeritus)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "leadership team: senior office leadership",
 
 
     # Leadership: policy
     str_detect(
       x,
-      "\\b(counsel)\\b" |> str_remove_all("\n") |> str_squish()
+      "\\b(counsel|osc director|law clerk)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "policy: legal",
 
 
-    #  protocol
-    str_detect(
-      x,
-      "\\b(director of protocol|protocol director)\\b" |> str_remove_all("\n") |> str_squish()
-    ) ~ "protocol",
 
 
     str_detect(
@@ -737,7 +778,7 @@ adviser to the leader|adviser to the speaker|\
 adviser to the congressman|senior congressional adviser|\
 leadership adviser|executive adviser|executive staff adviser|\
 senior special adviser|special adviser to the vice president|\
-special adviser to the cao)\\b" |> str_remove_all("\n") |> str_squish()
+special adviser to the cao)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "policy: adviser",
 
 
@@ -749,15 +790,15 @@ special adviser to the cao)\\b" |> str_remove_all("\n") |> str_squish()
 
     str_detect(
       x,
-      "\\b(district director|state director)\\b" |> str_remove_all("\n") |> str_squish()
-    ) ~ "district team: district leadership",
+      "\\b(district director|district deputy director|state director|branch chief)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
+    ) ~ "district: district leadership",
 
 
 
     str_detect(
       x,
-      "\\b(district director|state director)\\b" |> str_remove_all("\n") |> str_squish()
-    ) ~ "district team: district leadership",
+      "\\b(district director|state director)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
+    ) ~ "district: district leadership",
 
 
 
@@ -765,24 +806,46 @@ special adviser to the cao)\\b" |> str_remove_all("\n") |> str_squish()
     # TODO search other liasons
     str_detect(
       x,
-      "\\b(labor liaison|native american affairs liaison|small business coordinator|coalitions?|forest resources liaison|\
-health care liaison|healthcare liaison|senior citizen liaison|\
-business liaison|business relations|business coalitions|county liaison)\\b" |> str_remove_all("\n") |> str_squish()
-    ) ~ "district team: constituencies",
+      "\\b(labor liaison|native american affairs liaison|community liaison|community development|livable communities adviser|
+health care liaison|healthcare liaison|senior citizen liaison|tribal|seniors|senior citizen|county liaison)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
+    ) ~ "district: nonprofit constituencies",
+
+    str_detect(
+      x,
+      "\\b(native american|tribal|tribes|
+      law enforcement coordinator|law enforcement relations|
+      infrastructure|
+      counties|co coordinator|county|
+      juneau|dayton|grand rapids)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|") |> str_replace_all("\\| ", "|")
+    ) ~ "district: local government constituencies",
+
+
+    str_detect(
+      x,
+      "\\b(small business coordinator|forest resources liaison|business relationship|
+business liaison|business relations|business coalitions|county liaison)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
+    ) ~ "district: business constituencies",
+
+    # TODO search other liasons
+    str_detect(
+      x,
+      "\\b(coalition|coalitions|liaison|latino|partnerships)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
+    ) ~ "district: other constituencies",
+
 
     # District outreach and field
     str_detect(
       x,
-      "\\b(regional director|manhattan director|district|field|area|region|regional|community liaison|outreach|delegation|\
-dayton|grand rapids|counties|co coordinator|alaska|island|juneau|kansas|\
-island|central|north|northeastern|
-kent|olympia|olympic|northeast|south sound|minnesota|
-central|eastern|west|western|northwest|southwest|northwestern|southwestern|southeast|southwest|southern|northern|business liaison|community development|manhattan|downriver|downstate|state)\\b" |> str_remove_all("\n") |> str_squish()
-    ) ~ "district team: outreach and field",
+      "\\b(regional director|district|field|area|region|regional|outreach|delegation|\
+alaska|island|kansas|town hall|
+island|central|north|northeastern|suburbs|coastal director|mountain|
+kent|olympia|olympic|northeast|south sound|minnesota|manhattan|bronx|new orleans|parish|
+central|eastern|west|western|northwest|southwest|northwestern|southwestern|southeast|southwest|southern|northern|downriver|downstate|state)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
+    ) ~ "district: outreach and field",
 
     str_detect(
       x,
-      "\\b(community affairs|community engagement|community relations|community|\
+      "\\b(community affairs|community engagement|community relations|community|hurricane harvey recovery working group|
 community representative|community coordinator|community liaison|\
 community worker|community service|public engagement|\
 state education liaison|state office liaison|state liaison|\
@@ -791,8 +854,8 @@ senator s representative|senators representative|\
 island representative|neighbor island representative|\
 delegation representative|state representative|\
 rural representative|county coordinator|co director|\
-county director|community director)\\b" |> str_remove_all("\n") |> str_squish()
-    ) ~ "district team: outreach and field",
+county director|community director)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
+    ) ~ "district: outreach and field",
 
     str_detect(
       x,
@@ -814,8 +877,8 @@ interior alaska|southeast alaska|san luis valley|santa fe|\
 solano|vermont offices|oregon projects|georgia projects|\
 kansas development|montana special projects|tennessee coordinator|\
 rural initiatives|local relations|area representative|\
-office representative|projects representative)\\b" |> str_remove_all("\n") |> str_squish()  |> str_remove_all("\n") |> str_squish()
-    ) ~ "district team: outreach and field",
+office representative|projects representative)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")   |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
+    ) ~ "district: outreach and field",
 
     # ------------------------------------------------------------------
     # Instruction and training
@@ -826,7 +889,7 @@ office representative|projects representative)\\b" |> str_remove_all("\n") |> st
       x,
       "\\b(teacher|instructor|academic|academy|instructional|
       education and training|strategic learning and development|proctor|
-training and development|humanities|arts|residence|residential|training|superintendent|learning)\\b" |> str_remove_all("\n") |> str_squish()
+training and development|humanities|arts|residence|residential|training|superintendent|learning)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "instruction",
 
 
@@ -837,33 +900,34 @@ education and training|training and development|learning and development|\
 training specialist|training coordinator|training branch manager|\
 training project coordinator|software training|strategic learning|\
 learning specialist|test training and exercise planner|\
-professional development manager)\\b" |> str_remove_all("\n") |> str_squish()
-    ) ~ "instruction",
+professional development manager)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
+    ) ~ "administrative: instruction",
 
     # ------------------------------------------------------------------
-    # Information technology
+    # travel
     # ------------------------------------------------------------------
     str_detect(
       x,
-      "\\b(advance|protocol|trip director|national trip director|travel|computer|it |\
-trip planning|arrangements|inaugural coordinator)\\b" |> str_remove_all("\n") |> str_squish()
+      "\\b(advance|protocol|chief of protocol|director for protocol|protocol officer|\
+protocol assistant|protocol director|chief of protocol and foreign travel|ticketing|
+      trip director|national trip director|travel|\
+trip planning|arrangements|inaugural coordinator)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "administrative: travel and protocol",
 
-
     str_detect(
       x,
-      "\\b(information technology|info technology|i t specialist|\
-it assistant|it coordinator|it manager|it request|it strategy|\
+      "\\b(information technology|info technology|i t specialist|technology experience|access management|
+it assistant|it coordinator|it manager|it request|it |technologist|technology representative|technology coordinator|
 computer|software|programmer|developer|application development|\
 business process applications|technology asset|technology solutions|\
-technology management|technology director|house technology|\
+technology management|technology director|house technology|technology adviser|
 website technology|server migration|systems?|network|\
 telecommunications|fiber and wireless|wireless service|\
 voice and video|infrastructure branch|data processing|\
 data production|data set|data specialist|database|\
 office technology|electronic procurement applications|\
 electronics procurement applications|cms director|\
-closed caption television|closed circuit television)\\b" |> str_remove_all("\n") |> str_squish()
+closed caption television|closed circuit television)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "administrative: information technology",
 
     # ------------------------------------------------------------------
@@ -871,13 +935,14 @@ closed caption television|closed circuit television)\\b" |> str_remove_all("\n")
     # ------------------------------------------------------------------
     str_detect(
       x,
-      "\\b(personnel|human capital|human capitol|employee benefits|personal|employee|retreat|workforce development|\
-employee relations|staffing specialist|recruiter|compensation|\
-organization development|organization performance|\
-organization change management|diversity and organization change|\
+      "\\b(personnel|human capital|human capitol|talent|diversity equity and inclusion director|diversity|
+      employee benefits|personal|employee|retreat|workforce development|\
+employee relations|staffing specialist|recruiter|compensation|smi manager|eds specialist|benefits|
+organization development|organization performance|people experience|
+organization change management|diversity and organization change|
 performance and awards|transit benefits|employee assistance program|\
 employee assistance specialist|eap director|workplace safety|\
-health and safety professional)\\b" |> str_remove_all("\n") |> str_squish()
+health and safety professional)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "administrative: human resources",
 
     # ------------------------------------------------------------------
@@ -885,13 +950,14 @@ health and safety professional)\\b" |> str_remove_all("\n") |> str_squish()
     # ------------------------------------------------------------------
     str_detect(
       x,
-      "\\b(comptroller|finance|financial|budget|accountant|accounting|collections|development|business innovation|paralegal|\
-accounts payable|procurement|purchasing|contracts specialist|\
-contracting|asset management|assets|grant specialist|^grant$|\
-tax resources|internal controls|assurance and risk management|\
+      "\\b(comptroller|finance|financial|investment|revenue|budget|accountant|accounting|collections|development|business innovation|paralegal|\
+accounts payable|procurement|purchasing|contracts specialist|legal associate|bookkeeper|coordinating assistant|
+contracting|asset management|assets|grant specialist|^grant$|controller|compliance|
+tax resources|internal controls|
 inventory control|inventory and planning|resource management|\
-resources management|resource manager|resource specialist|banking associate|branch manager|business process|business manager|\
-property assistant)\\b" |> str_remove_all("\n") |> str_squish()
+resources management|resource manager|resource specialist|resources specialist|
+banking associate|branch manager|business process|business manager|\
+property assistant)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "administrative: finance and procurement",
 
     # ------------------------------------------------------------------
@@ -899,11 +965,11 @@ property assistant)\\b" |> str_remove_all("\n") |> str_squish()
     # ------------------------------------------------------------------
     str_detect(
       x,
-      "\\b(emergency preparedness|emergency continuity|preparedness|emergency|\
+      "\\b(emergency preparedness|emergency continuity|preparedness|emergency|risk|threat|
 continuity planning|continuity management|business continuity|\
-preparedness planner|coop planning|strategic planning|\
-planning director|planning manager|planning specialist|\
-executive planning|director for planning)\\b" |> str_remove_all("\n") |> str_squish()
+preparedness planner|coop planning|strategic planning|risk management|
+planning director|planning manager|planning specialist|director strategic plans|
+executive planning|director for planning)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "administrative: planning and preparedness",
 
     # ------------------------------------------------------------------
@@ -914,12 +980,12 @@ executive planning|director for planning)\\b" |> str_remove_all("\n") |> str_squ
       "\\b(program|projects?|special initiatives|strategic initiatives|programs|\
 task force coordinator|special projects?|state projects?|\
 member projects?|members projects?|federal projects?|\
-development and special projects|events?|conference coordinator|\
+development and special projects|events?|conference coordinator|ceremonies|luncheon|inauguration|
 retreat director|tour program|student loan repay|\
-process improvement|process management and innovation|\
+process improvement|process management and innovation|facilitator|
 change initiative|business improvement team|\
 business innovation|business innovations|quality assurance|\
-options|solutions delivery)\\b" |> str_remove_all("\n") |> str_squish()
+options|solutions delivery)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "administrative: programs and projects",
 
     # ------------------------------------------------------------------
@@ -927,19 +993,19 @@ options|solutions delivery)\\b" |> str_remove_all("\n") |> str_squish()
     # ------------------------------------------------------------------
     str_detect(
       x,
-      "\\b(operating|\
+      "\\b(operating|suite|chamber assistant|scopist|change management|aide|member assistant|
 schedule|scheduling|calendar clark|d c schedule|office manager|office administrator|office adminstrator|data|traffic|front office|office assistant|\
 office assistant|office coordinator|office staff|staff office|client|interpreter|\
 front office|office managerial assistant|clerical|adminstrative assistant|\
 data entry|document processing|documents manager|\
-executive assistant|executive team assistant|management assistant|\
+executive assistant|executive team assistant|management assistant|resources manager|\
 special assistant|senior assistant|congressional assistant|\
 capitol assistant|home assistant|general inquiries assistant|\
-assistant to|asst to rep|personal staff|personal assistant|\
-secretary|executive secretariat|staff assistant|staff coordinator|\
+assistant to|asst to rep|personal staff|personal assistant|admin|
+secretary|executive secretariat|staff coordinator|\
 conference coordinator|congresswomen s suite coordinator|\
 member family room coordinator|members? family room coordinator|call center|
-rooms coordinator|prayer room coordinator)\\b" |> str_remove_all("\n") |> str_squish()
+rooms coordinator|prayer room coordinator)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "administrative: office operations",
 
     # ------------------------------------------------------------------
@@ -947,16 +1013,16 @@ rooms coordinator|prayer room coordinator)\\b" |> str_remove_all("\n") |> str_sq
     # ------------------------------------------------------------------
     str_detect(
       x,
-      "\\b(mailroom|postmaster|postal|superintendent of mails|carpet|upholsterer|upholstery|gallery|historic|storeroom|supply|capitol|cable|fitness|laboratory|\
-package delivery|inventory specialist|receiving|warehouse|\
-storeroom|freight handler|fleet attendant|parking|vehicle|\
-maintenance|facilities|furnishings?|furniture|cabinet|cabinetmaker|\
-carpet|drapemaker|upholster|finisher|locksmith|engraver|framer|\
+      "\\b(mailroom|postmaster|postal|superintendent of mails|carpet|carpets|upholsterer|upholstery|gallery|historic|storeroom|supply|capitol|cable|fitness|laboratory|\
+package delivery|inventory specialist|receiving|warehouse|family|timeline|
+storeroom|freight handler|fleet attendant|parking|vehicle|kitchen|drapery|cashier|front|banking associate|
+maintenance|facilities|furnishings?|furniture|cabinet|cabinetmaker|cabinetry|
+carpet|drapemaker|upholster|finisher|locksmith|engraver|framer|textiles|inventory|
 cable installer|mechanic helper|laborer|custodial|\
 gift shop|sales associate|sales specialist|vending manager|\
-food manager|barber|hairstylist|shoe shine|textile|retail|\
+food manager|barber|hairstylist|shoe shine|textile|retail|scorekeeper|scorekeeping|
 office supply|stationery|printer|printing|property|process|\
-door attendant|garage attendant|food manager|gift shop|shift)\\b" |> str_remove_all("\n") |> str_squish()
+door attendant|doorman|garage attendant|food manager|gift shop|shift)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "administrative: facilities and logistics",
 
     # ------------------------------------------------------------------
@@ -966,8 +1032,8 @@ door attendant|garage attendant|food manager|gift shop|shift)\\b" |> str_remove_
       x,
       "\\b(court reporter|official reporter|reporter of debates|reporter|\
 chief reporter|office reporter|transcriber|captioner|captioning|\
-interpreter|sign language interpreter|hearing clark|\
-hearing coordinator|hearings coordinator)\\b" |> str_remove_all("\n") |> str_squish()
+interpreter|sign language interpreter|hearing clark|bicameral|
+hearing coordinator|hearings coordinator)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "administrative: reporting and accessibility",
 
     # ------------------------------------------------------------------
@@ -979,7 +1045,7 @@ hearing coordinator|hearings coordinator)\\b" |> str_remove_all("\n") |> str_squ
 collections?|registrar|curatorial|curator|museum|\
 historic preservation|historical publications|oral history|\
 library assistant|library automation|library science|\
-reference assistant|conservator|bookbinder)\\b" |> str_remove_all("\n") |> str_squish()
+reference assistant|conservator|bookbinder)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "administrative: archives and collections",
 
     # ------------------------------------------------------------------
@@ -987,13 +1053,14 @@ reference assistant|conservator|bookbinder)\\b" |> str_remove_all("\n") |> str_s
     # ------------------------------------------------------------------
     str_detect(
       x,
-      "\\b(security|police|plainclothesman|captain|lieutenant|door|safety|\
-private first|private class|private with training|detective|\
+      "\\b(security|police|plainclothesman|captain|lieutenant|door|safety|body person|protection|
+      physician|
+private first|private class|private with training|detective|officer|
 fingerprint personnel|identification specialist|sergeant|\
 doorkeeper|doorkeepers|chamber attendant|chamber manager|\
-cloakroom|escort and volunteer|superintendent of doors|\
+cloakroom|escort and volunteer|superintendent of doors|rooms|
 vehicle and materials screener|vehicle and maintenance screener|\
-special agent)\\b" |> str_remove_all("\n") |> str_squish()
+special agent)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "administrative: security and chamber support",
 
     # ------------------------------------------------------------------
@@ -1004,57 +1071,71 @@ special agent)\\b" |> str_remove_all("\n") |> str_squish()
       "\\b(customer relations|customer service|customer solutions|customer|
 client relations|member and guest relations|member service|\
 member services|sales and customer service|capitol exchange|tour|
-cvc coordinator|service director|support services)\\b" |> str_remove_all("\n") |> str_squish()
+cvc coordinator|service director|support services)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "administrative: support services",
 
     str_detect(
       x,
       "\\b(legal adviser|legal assistant|legal affairs|legal extern|\
 paralegal|litigation|contracts paralegal|law assistant|\
-education and workforce counsels)\\b" |> str_remove_all("\n") |> str_squish()
+education and workforce counsels)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "administrative: legal",
 
     # OLD CODING
     # Information technology and systems
     str_detect(
       x,
-      "\\b(computer specialist|systems?|telecommunications services|systems development services|network|information technology|it director|database|business continuity)\\b" |> str_remove_all("\n") |> str_squish()
+      "\\b(computer specialist|systems?|telecommunications services|reference assistant|
+      cybersecurity|technology partner|\
+      systems development services|network|information technology|it director|database|business continuity)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "administrative: information technology",
 
     # Programs and projects
     str_detect(
       x,
-      "\\b(program manager|senior program manager|project assistant|project director|project manager|projects assistant|projects director|special projects coordinator|director of special projects)\\b" |> str_remove_all("\n") |> str_squish()
+      "\\b(program manager|senior program manager|project assistant|project director|project manager|projects assistant|projects director|special projects coordinator|director of special projects)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "administrative: programs and projects",
 
     # Mailroom and inventory
     str_detect(
       x,
-      "\\b(mailroom assistant|inventory specialist|manager textiles|laborer)\\b" |> str_remove_all("\n") |> str_squish()
+      "\\b(mailroom assistant|inventory specialist|manager textiles|laborer)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "administrative: facilities and logistics",
 
     # Administrative office operations
     str_detect(
       x,
-      "\\b(chief administrative officer|administrative director|administrator|administrator assistant|administration|information|scheduling|accounts|payable|acquisitions?|appointments?|administrative assistant|office manager|office administrator|office director|account|accountant|accounting|enterprise|retail|logistics|equipment|technical|grants|professional assistant|operations? director|scheduler|scheduling director|executive assistant|trip coordinator|vendor|visitor|compensation|stationery|staff assistant|receptionist|systems administrator|captioning|workflow|office coordinator|personal assistant|secretary|printing|pay|staff professional|contract|audit|contracting|records?|payroll|finance|financial|budget|human resources?|d c office|member services|group assistant|support|contractor|engineering|engineer|desk|administrative|operations)\\b" |> str_remove_all("\n") |> str_squish()
+      "\\b(chief administrative officer|administrative director|administrator|administrator assistant|administration|information|scheduling|accounts|payable|acquisitions?|appointments?|administrative assistant|office manager|office administrator|office director|account|accountant|accounting|enterprise|retail|logistics|equipment|technical|grants|professional assistant|operations? director|scheduler|scheduling director|executive assistant|executive team|trip coordinator|vendor|visitor|compensation|stationery|staff assistant|receptionist|systems administrator|captioning|workflow|office coordinator|personal assistant|secretary|printing|pay|staff professional|contract|audit|contracting|records?|payroll|finance|financial|budget|human resources?|d c office|member services|group assistant|support|contractor|engineering|engineer|desk|administrative|operations)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "administrative: office operations",
 
     # Generic special assistants and congressional assistants
     str_detect(
       x,
-      "\\b(special assistant|congressional assistant|advance assistant)\\b" |> str_remove_all("\n") |> str_squish()
+      "\\b(general staff|
+      |senior associate|senior coordinator|senior director|senior house staff|senior senate staff|
+      senior staff member|
+      senior vice president|
+      assistant coordinator|senior associate|senior professional staff member|specialist|junior assistant|special assistant|congressional assistant|advance assistant)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "administrative: executive and staff support",
 
     # Support services
     str_detect(
       x,
-      "\\b(social worker|driver|chauffeur|security|facilities|mail|messenger|aide|police|doorkeeper|operator|foreman|journeyman|cloakroom|special events|assistant to|assist to|child care|credentialing|counselor|services|technician|supervisor)\\b" |> str_remove_all("\n") |> str_squish()
+      "\\b(social worker|driver|chauffeur|
+      green and gold coordinator|
+      first call|
+      security|
+      facilities|mail|messenger|
+      aide|
+      police|
+      doorkeeper|operator|foreman|journeyman|cloakroom|special events|assistant to|assist to|child care|credentialing|counselor|services|technician|supervisor)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "administrative: support services",
 
     # Special institutional roles
     str_detect(
       x,
-      "\\b(chaplain|clerk|floor|sergeant|private first class|apprentice|archival|archives|archivist|conservator|bookbinder|curator|guide|tours|parliamentarian|historian|social worker)\\b" |> str_remove_all("\n") |> str_squish()
+      "\\b(chaplain|clerk|floor|morning business|hearing coordinator|
+      sergeant|private first class|apprentice|archival|archives|archivist|conservator|bookbinder|curator|guide|tours|parliamentarian|historian|social worker)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "administrative: other",
 
     # ------------------------------------------------------------------
@@ -1063,9 +1144,7 @@ education and workforce counsels)\\b" |> str_remove_all("\n") |> str_squish()
     str_detect(
       x,
       "\\b(chaplain|clerk|floor|parliamentarian|historian|\
-chief of protocol|director for protocol|protocol officer|\
-protocol assistant|protocol director|chief of protocol and foreign travel|\
-tour coordinator|guide|tours)\\b" |> str_remove_all("\n") |> str_squish()
+tour coordinator|guide|tours)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "administrative: other",
 
     # ------------------------------------------------------------------
@@ -1074,14 +1153,20 @@ tour coordinator|guide|tours)\\b" |> str_remove_all("\n") |> str_squish()
 
     str_detect(
       x,
-      "\\b(majority|minority|caucus|whip|leadership adviser|leadership director|leadership liaison)\\b" |> str_remove_all("\n") |> str_squish()
+      "\\b(majority|minority|caucus|whip|leadership adviser|leadership director|leadership liaison|
+      member relations)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "party: leadership",
+
+
+        # Party roles
+        str_detect(x, "\\b(democratic|republican|majority|minority)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")  ) ~
+    "party: other",
 
 
     str_detect(
       x,
-      "\\b(democratic|republican|bipartisan)\\b" |> str_remove_all("\n") |> str_squish()
-    ) ~ "party: other",
+      "\\b(campaign|volunteer|platform director|political assistant|organizing|congressional election observer)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
+    ) ~ "campaign and elections",
 
 
 
@@ -1100,7 +1185,7 @@ tour coordinator|guide|tours)\\b" |> str_remove_all("\n") |> str_squish()
     # x,
     # "\\b(shared staff|shared staffer|shared associate staffer|\
     # staff shared|shared employed|shared employee|\
-    # shared congressional progressive caucus staff)\\b" |> str_remove_all("\n") |> str_squish()
+    # shared congressional progressive caucus staff)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     #     ) ~ "unclear: shared staff",
     #
     # ------------------------------------------------------------------
@@ -1111,7 +1196,7 @@ tour coordinator|guide|tours)\\b" |> str_remove_all("\n") |> str_squish()
 
     str_detect(
       x,
-      "^(staff shared|shared staff full committee|shared employee|shared staffer|shared associate staffer|shared employed)$"
+      "^(staff shared|staff member shared|shared staff full committee|shared employee|shared staffer|shared associate staffer|shared employed)$"
     ) ~ "unclear: shared staff",
 
     str_detect(
@@ -1128,8 +1213,9 @@ chief adviser|senator adviser|staff adviser|senior adviser( [a-z]+| [0-9]+)+)$"
 
     str_detect(
       x,
-      "^(office|program|staff|director|assistant director|deputy director|acting director|acting associate director|acting manager|no title listed|no title listed                             |
-|not listed)$"
+      "^(chief|staff lead|representative|staff member|manager|manager interim|office|program|staff|director|associate|
+      assistant|assistant director|deputy director|acting director|acting associate director|
+      assistant manager|acting manager|no title listed|no title listed|not listed)$"  |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "unclear: generic title",
 
 
@@ -1141,7 +1227,7 @@ chief adviser|senator adviser|staff adviser|senior adviser( [a-z]+| [0-9]+)+)$"
     # Generic staff labels
     str_detect(
       x,
-      "\\b(senior staff associate|staff associate|professional staff|professional staff member|senior professional staff)\\b" |> str_remove_all("\n") |> str_squish()
+      "\\b(senior staff associate|staff associate|professional staff|professional staff member|senior professional staff)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "policy: professional committee staff",
 
 #     str_detect(
@@ -1164,14 +1250,14 @@ chief adviser|senator adviser|staff adviser|senior adviser( [a-z]+| [0-9]+)+)$"
     # shared staff
     str_detect(
       x,
-      "\\b(shared staff)\\b" |> str_remove_all("\n") |> str_squish()
+      "\\b(shared staff)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "unclear: shared staff",
 
 
     # Staff representative labels that only identify a member
     str_detect(
       x,
-      "\\b(associate staff rep|staff rep|assistant staff)\\b" |> str_remove_all("\n") |> str_squish()
+      "\\b(associate staff rep|staff rep|assistant staff|congressional staff member|deputy assistant|various positions)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "unclear: staff",
 
 
@@ -1181,17 +1267,17 @@ chief adviser|senator adviser|staff adviser|senior adviser( [a-z]+| [0-9]+)+)$"
     # TODO classify these
     str_detect(
       x,
-      "\\b(acting director first call|acting director hosc|acting director osc|\
+      "\\b(acting director hosc|acting director osc|\
 acting eap director|director evs|cms director|ocs director|\
-deputy director ccsc io|manager smi|y2k deputy director)\\b" |> str_remove_all("\n") |> str_squish()
+deputy director ccsc io|y2k deputy director)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "unclear: organizational acronym",
 
     # Designees and other ambiguous titles
     str_detect(
       x,
-      "\\b(designee to the chairman|chair s designee|chairman s designee|\
-acting designee|director designate)\\b" |> str_remove_all("\n") |> str_squish()
-    ) ~ "unclear: designee",
+      "\\b(designee to the chairman|chair s designee|chairman s designee|designee|\
+acting designee|director designate)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
+    ) ~ "policy: designee",
 
     TRUE ~ NA_character_
   )
@@ -1224,6 +1310,31 @@ staff_classified <- titles_clean %>%
     category = str_remove(classification, ":.*$"),
     subcategory = str_remove(classification, "^[^:]+:\\s*")
   )
+
+
+main_categories <- c(
+  "administrative",
+  "communications",
+  "policy",
+  "temporary",
+  #"leadership team",
+  "intergovernmental",
+  "constituent casework",
+  "district",
+  #"party" ,
+  #"unclear" ,
+  #"other expenses",
+  #"instruction"
+  #"campaign"
+  "legislative"
+)
+
+# replace primary category with secondary title category if the first is not a main category and the second is
+staff_classified <- mutate(staff_classified,
+  category = ifelse(!category %in% main_categories & str_remove(classification_2, ":.*$") %in% main_categories,
+                    str_remove(classification_2, ":.*$"),
+                    category)
+)
 # ```
 #
 # For example:
@@ -1238,17 +1349,21 @@ staff_classified <- titles_clean %>%
 #
 #   ```r
 
+staff_classified |> save(file = here::here("data", "staff_classified.rda"))
+
 ###################################################################
+# Most common
 staff_classified %>%
   count(title_1, classification_1, sort = T)|>
   #slice_sample(n = 100) |>
-  head(20) |>
+  head(50) |>
   knitr::kable()
 
 # Rows where neither halves are recognized
 staff_classified %>%
   filter(
-    is.na(classification_1) & is.na(classification_2)
+    is.na(classification_1) & is.na(classification_2),
+    office_type_id != ""
   ) %>%
   count(title_1,
         #title_2,
@@ -1260,7 +1375,7 @@ staff_classified %>%
 
 # # Titles that remain unclassified
 staff_classified %>%
-  filter(is.na(classification)) %>%
+  filter(is.na(classification), office_type_id != "") %>%
   count(title_1, title_2, sort = TRUE) |>
   head(100) |>
   knitr::kable()
@@ -1276,9 +1391,93 @@ staff_classified %>%
   ) %>%
   count(title_1, title_2, classification_1, classification_2, sort = TRUE)
 
+# Rows where both halves are recognized but imply different categories
+staff_classified %>%
+  filter(
+    !is.na(classification_1),
+    !is.na(classification_2),
+    str_remove(classification_1, ":.*$") !=
+      str_remove(classification_2, ":.*$")
+  ) %>%
+  count(title_1, title_2,
+        str_remove(classification_1, ":.*$"),
+        str_remove(classification_2, ":.*$"),
+        sort = TRUE)
+
 # Overall distribution
 staff_classified %>%
   count(category, subcategory, sort = TRUE)
 # ```
 #
 # One important modeling choice is whether broad positions such as `"Legislative Director"` belong under **leadership team** or **legislative**. In the sample function, it is leadership because that rule appears first. Move it below the legislative section if every title containing “legislative” must instead be categorized as legislative.
+
+staff_classified_year <- staff_classified %>%
+  mutate(
+    start_year = as.integer(str_sub(start_date, 1, 4)),
+    end_year = as.integer(str_sub(end_date, 1, 4)),
+    end_year = coalesce(end_year, 2026L),
+    years = map2(
+      start_year,
+      end_year,
+      \(start, end) {
+        if (is.na(start) || is.na(end) || end < start) {
+          integer()
+        } else {
+          seq.int(start, end)
+        }
+      }
+    )
+  ) |>
+  unnest_longer(years, values_to = "year")
+
+
+staff_classified_year |>
+  filter(year > 2010, year < 2026,
+         category %in% c(
+           "administrative",
+           "communications",
+           "policy",
+           "temporary",
+           "leadership team",
+           "intergovernmental",
+           "administrative",
+           "communications",
+           "constituent casework",
+           "district",
+           #"party" ,
+           #"unclear" ,
+           #"other expenses",
+           #"instruction"
+           #"campaign"
+           "legislative"
+         )) |>
+  count(category, year,office_type_id, sort = TRUE) |>
+  mutate(office_type_id = case_when(
+    office_type_id == "HM" ~  "House Member",
+    office_type_id == "SM" ~  "Senate Member",
+    office_type_id == "" ~  " Other",
+    )) |>
+  ggplot() +
+  aes(x = year, y = n, color = category) +
+  theme(palette.colour.discrete = "Okabe-Ito") +
+  geom_point() +
+  geom_smooth(se = F, method = lm) +
+  geom_vline(xintercept = 2010) +
+  facet_wrap("office_type_id")
+
+staff_classified_year  |>
+  filter(year > 2000, year < 2026) |>
+  count(year,office_type_id, sort = TRUE) |>
+  ggplot() +
+  aes(x = year, y = n) +
+  #scale_color_viridis_d() +
+  #scale_color_okabeito() +
+  geom_point() +
+  geom_line() +
+  facet_wrap("office_type_id")
+
+
+staff_title_lookup <- staff_classified |>
+  distinct(position_title, classification_1, classification_2, category)
+
+staff_title_lookup |> save(file = here::here("data", "staff_title_lookup.rda"))

@@ -13,7 +13,7 @@ knitr::opts_chunk$set(
   split = T,
   fig.align = 'center',
   fig.path='figs/',
-  fig.retina = 6,
+  fig.retina = 3,
   out.width = "100%",
   warning = F,
   message = F)

@@ -48,7 +48,43 @@ The analysis:
 3. Merges overlapping spells so concurrent jobs are not counted more than once.
 4. Counts each person once per member-year.
 5. Uses December 31 as the annual reference date, censored at the analysis endpoint.
-6. Constructs the same measures from `salary_auto_history.csv` as a secondary comparison.
+6. Constructs the same measures from `salary_auto_history.csv` as a comparison.
+
+## Questions 
+
+What does it mean when staff are associated with a member_id before or after they were in Congress? 
+
+- Elizabeth Warren has one staffer the year before she took office
+- David Wu has one staffer the year after he left office
+- ISAKSON, Johnny had 6 staffers in 2020, after resigning in 2019
+- BOEHNER, John Andrew had 2 staffers in 2016 after resigning in 2015
+- HANABUSA, Colleen had 9 staffers in 2016, having left office Jan 2015
+- CLAWSON, Curt took office June 24, 2014, but had 1 staffer in 2013
+
+
+Is there potential missing data in the first year? 
+
+- we are seeing some Reps with less than 10 staffers. Most of these are people in their first year. Likewise with senators with fewer than 40 staffers
+
+Relatively, is there missing data for people serving partial terms, or should we assume they have not yet staffed up? 
+
+- DELBENE, Suzan K. had 8 staffers in 2012 when she served the remainder of the term for the seat left vacant by the resignation of Jay Inslee. 
+- CLARK, Katherine M., had 5 staffers after winning the special election in 2013 on December 10
+- BYRNE, Bradley, had 7 staffers after taking office December 17, 2013 
+- EVANS, Dwight, joined congresss November 8, 2016, and had 1 staffer 
+- COMER, James, joined congress November 8, 2016, and had 9 staffers 
+- SCANLON, Mary Gay took office November 6, 2018 with 7 staffers 
+- WILD, Susan took oofice November 6, 2018 with 7 staffers
+- BROWN, Shontel M., was sworn in on November 4 and had 7 staffers 
+- FINSTAD, Brad took office August 9, 2022, had 9 staffters 
+- YAKYM, Rudy, III took office November 8, 2022, had 8 staff
+- AMO, Gabe took office with 9 staffers in November 7, 2023 
+- WIED, Tony, took office with 8 staffters November 5, 2024
+
+Are leadership staff attached to members? 
+
+- we are seeming some members of the house and senate with over 100 
+
 
 ## Setup
 
@@ -63,6 +99,12 @@ library(here)
 library(scales)
 
 here::here("code", "qmd_global_options.R") |> source()
+
+# for this page 
+knitr::opts_chunk$set(
+  fig.width = 7.5,
+  fig.height = 7.5,
+  fig.path='../figs/')
 
 data_dir <- here(
   "data",
@@ -109,7 +151,53 @@ person <- fread(
 )
 ```
 
-# Primary measure: `congressional_history.csv`
+## Inspect 
+
+```{r}
+#| label: inspect-office-staff-by-year
+
+office_staff_by_year <- history |>
+  filter(member_id == 2874) |>
+  mutate(
+    start_year = as.integer(str_sub(start_date, 1, 4)),
+    end_year = as.integer(str_sub(end_date, 1, 4)),
+    end_year = coalesce(end_year, 2026L),
+    years = map2(
+      start_year,
+      end_year,
+      \(start, end) {
+        if (is.na(start) || is.na(end) || end < start) {
+          integer()
+        } else {
+          seq.int(start, end)
+        }
+      }
+    )
+  ) |>
+  unnest_longer(years, values_to = "year")
+
+# office_staff_by_year
+```
+
+
+Then count distinct staffers in that office by year:
+
+```{r}
+#| label: count-raw-office-staff-by-year
+
+office_staff_by_year |>
+  summarise(
+    staff_count = n_distinct(core_person_id),
+    record_count = n(),
+    .by = year
+  ) |>
+  arrange(year)
+```
+
+
+# Primary measure:
+
+`congressional_history.csv`
 
 ## 1. Parse LegiStorm partial dates
 
@@ -121,10 +209,11 @@ LegiStorm uses partial dates such as `2006-05-00` and `1998-00-00`. The parser u
 - End `YYYY-00-00` becomes December 31.
 
 ```{r}
-#| label: define-partial-date-parser
+#| label: define-congress-aware-partial-date-parser
 
 parse_partial_date <- function(x, bound = c("start", "end")) {
   bound <- match.arg(bound)
+
   x <- trimws(as.character(x))
   x[x %chin% c("", "NA", "NULL")] <- NA_character_
 
@@ -139,16 +228,14 @@ parse_partial_date <- function(x, bound = c("start", "end")) {
   month <- suppressWarnings(as.integer(parts[[2]]))
   day <- suppressWarnings(as.integer(parts[[3]]))
 
+  original_month <- month
+  original_day <- day
+
   month_missing <- is.na(month) | month == 0L
   day_missing <- is.na(day) | day == 0L
 
   month[month_missing] <- if (bound == "start") 1L else 12L
-
-  if (bound == "start") {
-    day[day_missing] <- 1L
-  } else {
-    day[day_missing] <- 1L
-  }
+  day[day_missing] <- 1L
 
   result <- rep(as.IDate(NA), length(x))
 
@@ -187,10 +274,56 @@ parse_partial_date <- function(x, bound = c("start", "end")) {
     )
 
     result[use_month_end] <- next_month - 1L
+
+    congress_boundary_end <- (
+      valid_base &
+        year %% 2L == 1L &
+        (
+          is.na(original_month) |
+            original_month == 0L |
+            (
+              original_month == 1L &
+                (
+                  is.na(original_day) |
+                    original_day == 0L |
+                    original_day == 1L
+                )
+            )
+        )
+    )
+
+    result[congress_boundary_end] <- as.IDate(
+      sprintf(
+        "%04d-12-31",
+        year[congress_boundary_end] - 1L
+      )
+    )
   }
 
   result
 }
+
+# Test it:
+
+test_dates <- c(
+  "2011-01-01",
+  "2011-01-02",
+  "2012-12-00",
+  "2013-00-00",
+  "2013-01-00"
+)
+
+tibble(
+  original = test_dates,
+  parsed_start = parse_partial_date(
+    test_dates,
+    "start"
+  ),
+  parsed_end = parse_partial_date(
+    test_dates,
+    "end"
+  )
+)
 ```
 
 ## 2. Prepare congressional-history spells
@@ -378,7 +511,11 @@ history_staffer_member_year <- unique(
   by = c("core_person_id", "member_id", "year")
 )
 
-history_staffer_member_year[, .N, by = year][order(year)]
+history_staffer_member_year[, .N, by = year][order(year)] |> 
+  ggplot() + 
+  aes(x = year, y = N) + 
+  geom_col() + 
+  geom_vline(xintercept = 2010)
 ```
 
 ## 6. Calculate primary staffer experience
@@ -448,7 +585,11 @@ staffer_experience[
     congressional_experience_days / 365.25
 ]
 
-staffer_experience[, .N, by = year][order(year)]
+staffer_experience[, .N, by = year][order(year)]|> 
+  ggplot() + 
+  aes(x = year, y = N) + 
+  geom_col() + 
+  geom_vline(xintercept = 2010)
 ```
 
 `staffer_experience` is now the primary result, based on `congressional_history.csv`. It has one row per:
@@ -457,18 +598,6 @@ staffer_experience[, .N, by = year][order(year)]
 core_person_id × member_id × year
 ```
 
-```{r}
-#| label: save-history-staffer-experience
-
-save(
-  staffer_experience,
-  file = here::here(
-    "data",
-    "legistorm",
-    "staffer_experience_history.rda"
-  )
-)
-```
 
 ## 7. Plot the primary staffer-experience distribution
 
@@ -557,25 +686,6 @@ staffer_experience |>
   )
 ```
 
-## 8. Aggregate the primary measure to member-years
-
-```{r}
-#| label: aggregate-history-member-years
-
-member_year_experience <- staffer_experience[
-  ,
-  .(
-    staff_count = uniqueN(core_person_id),
-    total_staff_experience_years =
-      sum(congressional_experience_years, na.rm = TRUE),
-    mean_staff_experience_years =
-      mean(congressional_experience_years, na.rm = TRUE),
-    median_staff_experience_years =
-      median(congressional_experience_years, na.rm = TRUE)
-  ),
-  by = .(member_id, year)
-]
-```
 
 ```{r}
 #| label: add-member-names-to-history-results
@@ -598,14 +708,12 @@ member_names <- merge(
   all.x = TRUE
 )
 
-member_year_experience <- merge(
-  member_year_experience,
+staffer_experience <- merge(
+  staffer_experience,
   member_names[
     ,
     .(
       member_id,
-      first_name,
-      last_name,
       icpsr_id
     )
   ],
@@ -614,21 +722,106 @@ member_year_experience <- merge(
 )
 
 setorder(
-  member_year_experience,
+  staffer_experience,
   member_id,
   year
 )
 
-member_year_experience[]
+# staffer_experience[]
 ```
+
+
+```{r}
+#| label: save-history-staffer-experience
+
+save(
+  staffer_experience,
+  file = here::here(
+    "data",
+    "legistorm",
+    "staffer_experience_history.rda"
+  )
+)
+```
+
+### Merge with voteview data 
+
+and keep only members who were in office at the time
+
+
+```{r}
+year_to_congress <- function(year) {
+  year <- as.integer(year)
+
+  if (anyNA(year) || any(year < 1789L)) {
+    stop(
+      "Year must contain nonmissing integers greater than or equal to 1789."
+    )
+  }
+
+  floor((year - 1789L) / 2L) + 1L
+}
+
+library(legislators)
+
+members <- members |>
+  group_by(icpsr) |>
+  mutate(
+    first_congress = congress == min(congress, na.rm = TRUE),
+    congresses = congress - min(congress, na.rm = TRUE) + 1,
+    congresses2 = ifelse(congresses > 2, 3, congresses)
+  ) |>
+  ungroup() #|> select(icpsr_id, congress, first_congress)
+
+
+member_year_experience <- staffer_experience |> 
+  mutate(congress = year_to_congress(year)) |> 
+  full_join(members |> distinct(icpsr_id = icpsr, bioname, 
+                                congress,first_congress, congresses, congresses2,
+                                chamber)) |> 
+  # drop members not in congress at the time 
+  drop_na(bioname) |> 
+  # put year and congress next to each other 
+  select(congress, year, everything())
+
+```
+
+
+## 8. Aggregate the primary measure to member-years
+
+```{r}
+#| label: aggregate-history-member-years
+
+member_year_experience <- member_year_experience[
+  ,
+  .(
+    staff_count = uniqueN(core_person_id),
+    total_staff_experience_years =
+      sum(congressional_experience_years, na.rm = TRUE),
+    mean_staff_experience_years =
+      mean(congressional_experience_years, na.rm = TRUE),
+    median_staff_experience_years =
+      median(congressional_experience_years, na.rm = TRUE)
+  ),
+  by = .(year, congress, first_congress,congresses,congresses2,
+         member_id, icpsr_id, bioname, chamber)
+]
+```
+
+## Plot 
+
+plot-history-member-year-experience
 
 ```{r}
 #| label: plot-history-member-year-experience
+
+
 
 member_year_experience |>
   ggplot(
     aes(
       x = year,
+      color = first_congress,
       y = total_staff_experience_years,
       group = member_id
     )
@@ -640,13 +833,99 @@ member_year_experience |>
     x = "Year",
     y = "Total staff experience (years)"
   ) +
+  theme_minimal() 
+
+
+member_year_experience |>
+  filter(year > 2010) |> 
+  ggplot(
+    aes(
+      x = year,
+      color = first_congress,
+      y = total_staff_experience_years,
+      group = member_id
+    )
+  ) +
+  geom_line(alpha = 0.2) +
+  labs(
+    title = "Total staff experience by member and year",
+    subtitle = "Primary measure from congressional_history.csv",
+    x = "Year",
+    y = "Total staff experience (years)"
+  ) +
+  theme_minimal() + 
+  facet_wrap("chamber")
+
+
+member_year_experience |> 
+  filter(staff_count < 10, year >2011, chamber == "House") |> 
+  select(congress, year, icpsr_id,  bioname, staff_count, chamber) |> knitr::kable(caption = "Reps with less than 10 staffers")
+
+member_year_experience |> 
+  filter(staff_count < 10, year >2011, chamber == "Senate") |> 
+  select(congress, year, icpsr_id,  bioname, staff_count, chamber) |> knitr::kable(caption = "Senators with less than 10 staffers")
+
+
+member_year_experience |> 
+  filter(staff_count > 100, year >2011, chamber == "House") |> 
+  select(congress, year, icpsr_id, bioname, staff_count, chamber) |> knitr::kable(caption = "Reps with over 100 staffers")
+
+member_year_experience |> 
+  filter(staff_count > 100, year >2011, chamber == "Senate") |> 
+  select(congress, year, icpsr_id, bioname, staff_count, chamber) |> knitr::kable(caption = "Senators with over 100 staffers")
+
+# d |> 
+#   filter(staff_count < 10, year >2011) |> count(year, name = "offices with less than 10 staffers")
+
+member_year_experience |>
+  filter(year > 2010) |> 
+  ggplot(
+    aes(
+      x = year,
+      y = staff_count,
+      color = chamber,
+      group = icpsr_id
+    )
+  ) +
+  geom_line(alpha = 0.2) +
+  geom_smooth(aes(group = chamber, color = chamber)) + 
+  labs(
+    title = "Count by member and year",
+    subtitle = "Primary measure from congressional_history.csv",
+    x = "Year",
+    y = "Staff"
+  ) +
   theme_minimal()
 
 member_year_experience |>
+  filter(year > 2010) |> 
+  ggplot(
+    aes(
+      x = year,
+      y = staff_count,
+      color = first_congress,
+      group = icpsr_id
+    )
+  ) +
+  geom_line(alpha = 0.2) +
+  labs(
+    title = "Count by member and year",
+    subtitle = "Primary measure from congressional_history.csv",
+    x = "Year",
+    y = "Staff"
+  ) +
+  theme_minimal() + 
+  # scale_color_viridis_d() + 
+  facet_wrap("chamber")
+  
+
+member_year_experience |>
+    filter(year > 2010) |> 
   ggplot(
     aes(
       x = year,
       y = mean_staff_experience_years,
+      color = first_congress,
       group = member_id
     )
   ) +
@@ -657,13 +936,18 @@ member_year_experience |>
     x = "Year",
     y = "Mean staff experience (years)"
   ) +
-  theme_minimal()
+  theme_minimal()+ 
+  #scale_color_viridis_d() + 
+  facet_wrap("chamber")
+
 
 member_year_experience |>
+    filter(year > 2010) |> 
   ggplot(
     aes(
       x = year,
       y = median_staff_experience_years,
+            color = first_congress,
       group = member_id
     )
   ) +
@@ -674,7 +958,37 @@ member_year_experience |>
     x = "Year",
     y = "Median staff experience (years)"
   ) +
-  theme_minimal()
+  theme_minimal()+ 
+  facet_wrap("chamber")
+
+member_year_experience$median_staff_experience_years <- member_year_experience$median_staff_experience_years |> round(1)
+
+low <- member_year_experience |>
+  filter(year > 2010, median_staff_experience_years == 1, median_staff_experience_years <2) |> 
+  select(bioname, year, median_staff_experience_years, staff_count)
+
+# low$bioname |> unique()
+
+member_year_experience |>
+    filter(year > 2010, bioname %in% low$bioname) |> 
+  ggplot(
+    aes(
+      x = year,
+      y = median_staff_experience_years,      
+      color = first_congress,
+      group = member_id
+    )
+  ) +
+  geom_line(alpha = 0.2) +
+  geom_point(alpha = 0.1) + 
+  labs(
+    title = "Median staff experience (people with < 2)",
+    subtitle = "Primary measure from congressional_history.csv",
+    x = "Year",
+    y = "Median staff experience (years)"
+  ) +
+  theme_minimal() + 
+  facet_wrap("chamber")
 ```
 
 # Comparison measure: `salary_auto_history.csv`
