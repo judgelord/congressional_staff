@@ -419,12 +419,6 @@ graduate associate|graduate student|student assistant|special government employe
       "\\blegislative counsel\\b"
     ) ~ "legislative: legislative counsel",
 
-    # Scheduling and operations
-    str_detect(
-      x,
-      "\\b(scheduler|scheduling director|director of scheduling|\
-director of operations|operations director)\\b"
-    ) ~ "administrative: scheduling and operations",
 
     # Press and communications
     str_detect(
@@ -433,11 +427,6 @@ director of operations|operations director)\\b"
 press assistant|assistant press secretary)\\b"
     ) ~ "communications: press and communications",
 
-    # Front office
-    str_detect(
-      x,
-      "\\bstaff assistant\\b"
-    ) ~ "administrative: front office",
 
     # Casework
     str_detect(
@@ -445,6 +434,20 @@ press assistant|assistant press secretary)\\b"
       "\\b(caseworker|case worker|constituent services? representatives?|\
 constituent service representatives?)\\b"
     ) ~ "constituent casework: casework",
+
+    # Scheduling and operations
+    str_detect(
+      x,
+      "\\b(scheduler|scheduling director|director of scheduling|\
+director of operations|operations director)\\b"
+    ) ~ "administrative: scheduling and operations",
+
+
+    # Front office
+    str_detect(
+      x,
+      "\\bstaff assistant\\b"
+    ) ~ "administrative: front office",
 
     # ------------------------------------------------------------------
     # Intergovernmental, government relations, oversight, investigations
@@ -497,7 +500,7 @@ quorum specialist|rules associate)\\b" |> str_squish() |> str_remove_all(" \n|\n
 
     str_detect(
       x,
-      "\\b(acting director hosc|acting eap director|adviser to the chair|
+      "\\b(acting director hosc|acting eap director|adviser to the chair|associate staff|
       committee|committee staff member|committee statistician|committee assistant|committee director|committee clerk|
       senior staff associate|staff associate|professional staff|professional staff member|senior professional staff|
       senior adviser to the chairman|senior adviser to the ranking member|\
@@ -995,7 +998,7 @@ office representative|projects representative)\\b" |> str_squish() |> str_remove
     # Education and training
     str_detect(
       x,
-      "\\b(teacher|instructor|academic|academy|instructional|
+      "\\b(teacher|instructor|academic|academy|instructional|tutor|
       education and training|strategic learning and development|proctor|
 training and development|humanities|arts|residence|residential|training|superintendent|learning)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "administrative: instruction",
@@ -1018,7 +1021,7 @@ professional development manager)\\b" |> str_squish() |> str_remove_all(" \n|\n 
       x,
       "\\b(advance|protocol|chief of protocol|director for protocol|protocol officer|\
 protocol assistant|protocol director|chief of protocol and foreign travel|ticketing|
-      trip director|national trip director|travel|\
+      trip director|national trip director|travel|mission assurance|\
 trip planning|arrangements|inaugural coordinator)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "administrative: travel and protocol",
 
@@ -1026,14 +1029,14 @@ trip planning|arrangements|inaugural coordinator)\\b" |> str_squish() |> str_rem
       x,
       "\\b(information technology|info technology|i t specialist|technology experience|access management|cms director|y2k deputy director|
 it assistant|it coordinator|it manager|it request|it |technologist|technology representative|technology coordinator|
-computer|software|programmer|developer|application development|\
-business process applications|technology asset|technology solutions|\
-technology management|technology director|house technology|technology adviser|
-website technology|server migration|systems?|network|\
+computer|software|programmer|developer|application development|identity governance|\
+business process applications|technology asset|technology solutions|housenet|
+technology management|technology director|house technology|technology adviser|technology and alliance|
+website technology|server migration|systems?|network|ux and ui|
 telecommunications|fiber and wireless|wireless service|\
 voice and video|infrastructure branch|data processing|\
 data production|data set|data specialist|database|\
-office technology|electronic procurement applications|\
+office technology|electronic procurement applications|
 electronics procurement applications|cms director|\
 closed caption television|closed circuit television)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "administrative: information technology",
@@ -1044,9 +1047,9 @@ closed caption television|closed circuit television)\\b" |> str_squish() |> str_
     str_detect(
       x,
       "\\b(personnel|human capital|human capitol|talent|diversity equity and inclusion director|diversity|
-      employee benefits|personal|employee|retreat|workforce development|recruitment|
+      employee benefits|personal|employee|retreat|workforce|recruitment|
 employee relations|staffing specialist|recruiter|compensation|smi manager|eds specialist|benefits|wellness|
-organization development|organization performance|people experience|
+organization development|organization performance|people experience|remedy management|
 organization change management|diversity and organization change|^advocate$|
 performance and awards|transit benefits|employee assistance program|\
 employee assistance specialist|eap director|workplace safety|\
@@ -1060,7 +1063,7 @@ health and safety professional)\\b" |> str_squish() |> str_remove_all(" \n|\n |\
       x,
       "\\b(comptroller|finance|financial|investment|revenue|budget|accountant|accounting|collections|development|business innovation|paralegal|\
 accounts payable|procurement|purchasing|contracts specialist|legal associate|bookkeeper|coordinating assistant|
-contracting|asset management|assets|grant specialist|^grant$|controller|compliance|
+contracting|asset management|assets|grant specialist|^grant$|controller|compliance|contracts|
 tax resources|internal controls|
 inventory control|inventory and planning|resource management|\
 resources management|resource manager|resource specialist|resources specialist|
@@ -1106,7 +1109,9 @@ schedule|scheduling|calendar clark|d c schedule|office manager|office administra
 office assistant|office coordinator|office staff|staff office|client|interpreter|\
 front office|office managerial assistant|clerical|adminstrative assistant|third assistant director|
 representative to the senator|
-general manager|
+general manager|second assistant|third assistant|
+interparliamentary|
+stenographer|
 data entry|document processing|documents manager|registrarial|documents|passport|
 executive assistant|executive team assistant|management assistant|resources manager|\
 special assistant|senior assistant|congressional assistant|\
@@ -1126,13 +1131,13 @@ rooms coordinator|prayer room coordinator)\\b" |> str_squish() |> str_remove_all
       "\\b(mailroom|postmaster|postal|superintendent of mails|carpet|carpets|upholsterer|upholstery|gallery|historic|storeroom|supply|capitol|cable|fitness|laboratory|\
 package delivery|inventory specialist|receiving|warehouse|family|timeline|product|business management manager|
 storeroom|freight handler|fleet attendant|parking|vehicle|kitchen|drapery|cashier|front|banking associate|
-maintenance|facilities|furnishings?|furniture|cabinet|cabinetmaker|cabinetry|
+maintenance|facilities|furnishings?|furniture|cabinet|cabinetmaker|cabinetry|finishing|
 carpet|drapemaker|upholster|finisher|locksmith|engraver|framer|textiles|inventory|
 cable installer|mechanic helper|laborer|custodial|\
-gift shop|sales associate|sales specialist|vending manager|\
+gift shop|sales associate|sales specialist|vending manager|fleet|
 food manager|barber|hairstylist|shoe shine|textile|retail|scorekeeper|scorekeeping|
 office supply|stationery|printer|printing|property|process|\
-door attendant|doorman|garage attendant|food manager|gift shop|shift)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
+door attendant|doorman|doormen|garage attendant|food manager|gift shop|shift)\\b" |> str_squish() |> str_remove_all(" \n|\n |\n") |> str_replace_all("\\| ", "|")
     ) ~ "administrative: facilities and logistics",
 
     # ------------------------------------------------------------------
@@ -1165,7 +1170,7 @@ reference assistant|conservator|bookbinder)\\b" |> str_squish() |> str_remove_al
     str_detect(
       x,
       "\\b(security|police|plainclothesman|captain|lieutenant|door|safety|body person|protection|
-      physician|
+      physician|forensic|nurse|
 private first|private class|private with training|detective|officer|
 fingerprint personnel|identification specialist|sergeant|\
 doorkeeper|doorkeepers|chamber attendant|chamber manager|\
