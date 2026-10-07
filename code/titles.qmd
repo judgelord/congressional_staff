@@ -1,0 +1,768 @@
+---
+title: "Congressional staff titles from LegiStorm data"
+subtitle: "from congressional_history.csv"
+author: Devin Judge-Lord
+date: today
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: true
+    self-contained: true
+editor_options:
+  chunk_output_type: console
+---
+
+## Setup
+
+```{r}
+#| label: setup
+#| warning: false
+#| message: false
+
+library(tidyverse)
+library(data.table)
+library(here)
+library(scales)
+
+here::here("code", "qmd_global_options.R") |> source()
+
+load(file = here::here("data", "staff_classified.rda"))
+```
+
+## Background
+
+### Personal staff
+
+Budgets for staff are determined by the population of the state; Senators from California, the most populous state, get more money for staff than Senators from Wyoming, the least populous state. Members can choose how to distribute staff between their Washington office and their United States congressional district home office or offices.
+
+Not all offices have the same type of organization, and different titles may be used for substantially similar jobs. Common jobs are:
+
+-Chief of staff: Highest-ranking and usually highest-paid legislative staffer in the office of a member of Congress, usually the chief operating officer of the office, reporting directly to the member. Oversees a dozen or more other employees. Some chiefs of staffs are charged with personnel decisions and policy initiatives. From time to time a chief of staff may be based out of a district office, but they are almost always found at the Capitol ("on the "Hill"). Chiefs of staff are usually very experienced political staffers, often with years of prior work on the Hill, or are personal friends of Members. Some chiefs of staff were previously campaign managers.[7]
+-Deputy chief of staff: Reports to the chief of staff and typically oversees a few policy issues. Responsibilities typically include managing the Chief of Staff’s schedule, personal correspondence, and any overflow work delegated by the Chief of Staff.[8]
+-Legislative director (LD), senior legislative assistant (SLA), or legislative coordinator (LC): oversees the legislative staff, including all legislative assistants and correspondents. There is usually one in each office.
+-Scheduler or Director of Operations: The key administrative staffer in the office, the scheduler is responsible for fully designing and maintaining the Member's schedule. This work typically includes making travel arrangements and arranging all events and meetings.
+-Legislative assistant (LA): Legislative Assistants assume expertise and develop legislation for a few select issue areas, keeping the Member up to date on constituent issues or policies that pertain to those subject areas.
+-Legislative correspondent (LC): Responsible for drafting letters in response to constituents' comments and questions and also generally responsible for a few legislative issues. According to the Dirksen Congressional Center, most House offices have one or two, while senators have three to five, depending on their state's population.
+-Legislative counsel: Some offices also have a staffing attorney who works alongside legislative staff. Their role often involves advising legislative staff and the Member on legal issues and ensuring compliance with the law and chamber rules, including ethics guidelines.
+-Press secretary or communications director: Responsible for Member's relationship with media; is the liaison for the local and national press; issues press releases. In offices with no press assistants, this position also runs social media.
+-Press Assistant (PA): Assistant to the Communications Director. Press assistants usually run social media accounts, draft press releases/op-eds/etc. as delegated, and occasionally assist with correspondence with media contacts.
+-Staff Assistant (SA): The most common entry-level position on Capitol Hill, the Staff Assistant handles all front office responsibilities, answers phones, schedules tours, and often supervises the mail program. Staff Assistants also often serve as intern coordinators.
+-Caseworkers or constituent services representatives: Based in the district office and responsible for helping constituents deal with problems relating to federal agencies. For example, caseworkers help individuals secure veterans' benefits, aid with Social Security and Medicare, and resolve immigration issues. Caseworkers may also provide mediation services to constituents and obtain government information and publications.
+
+## Classification review
+
+### Most common titles
+
+```{r}
+#| label: common-titles
+
+staff_classified |>
+  count(title_1, classification_1, sort = TRUE) |>
+  head(50) |> knitr::kable()
+```
+
+### Most common policy titles
+
+```{r}
+#| label: common-policy-titles
+
+staff_classified |>
+  filter(category == "policy") |>
+  count(title_1, classification_1, sort = TRUE) |>
+  head(20) |> knitr::kable()
+```
+
+### Most common legal titles
+
+```{r}
+#| label: common-legal-titles
+
+staff_classified |>
+  filter(category == "legal") |>
+  count(title_1, classification_1, sort = TRUE) |>
+  head(20) |> knitr::kable()
+```
+
+## Classification diagnostics
+
+### Unrecognized title pairs
+
+These are rows where neither parsed title received a classification.
+
+```{r}
+#| label: unrecognized-title-pairs
+
+staff_classified |>
+  filter(
+    is.na(classification_1),
+    is.na(classification_2),
+    office_type_id != ""
+  ) |>
+  count(title_1, sort = TRUE) |>
+  select(-n) |>
+  knitr::kable()
+```
+
+### Titles remaining unclassified
+
+```{r}
+#| label: remaining-unclassified-titles
+
+staff_classified |>
+  filter(
+    is.na(classification),
+    office_type_id != ""
+  ) |>
+  count(title_1, title_2, sort = TRUE) |>
+  head(20) |> knitr::kable()
+```
+
+### Conflicting classifications across title components
+
+These are rows in which both parsed titles are recognized but imply different categories.
+
+```{r}
+#| label: conflicting-title-classifications
+
+multiple_titles <- staff_classified |>
+  filter(
+    !is.na(classification_1),
+    !is.na(classification_2),
+    str_remove(classification_1, ":.*$") !=
+      str_remove(classification_2, ":.*$")
+  ) |>
+  count(
+    title_1,
+    title_2,
+    classification_1,
+    classification_2,
+    sort = TRUE
+  ) 
+
+multiple_titles|> head(20) |> knitr::kable()
+```
+
+### Export conflicting classifications
+
+```{r}
+#| label: export-conflicting-classifications
+
+write_csv(
+  multiple_titles,
+  file = here::here("data", "multiple_titles.csv")
+)
+```
+
+### Three or more titles
+
+```{r}
+#| label: three-or-more-titles
+
+staff_classified |>
+  filter(str_detect(position_title, "/.*/")) |>
+  select(
+    position_title,
+    classification_1,
+    classification_2
+  ) |>
+  knitr::kable(caption = "Positions containing three or more titles")
+```
+
+### Overall classification distribution
+
+```{r}
+#| label: overall-classification-distribution
+
+staff_classified |>
+  count(category, subcategory, sort = TRUE) |>
+  head(20) |> knitr::kable()
+```
+
+One important modeling choice is whether broad positions such as
+`"Legislative Director"` belong under **office leadership** or
+**legislative**. Because `case_when()` uses the first matching rule, this
+depends on the order of the classification rules.
+
+## Annual staff-position data
+
+The following code expands each employment record into one row per year
+between its start and end dates. Missing end years are treated as 2026.
+
+```{r}
+#| label: create-annual-staff-data
+
+staff_classified_year <- staff_classified |>
+  mutate(
+    start_year = as.integer(str_sub(start_date, 1, 4)),
+    end_year = as.integer(str_sub(end_date, 1, 4)),
+    end_year = coalesce(end_year, 2026L),
+    years = map2(
+      start_year,
+      end_year,
+      \(start, end) {
+        if (is.na(start) || is.na(end) || end < start) {
+          integer()
+        } else {
+          seq.int(start, end)
+        }
+      }
+    )
+  ) |>
+  unnest_longer(years, values_to = "year")
+```
+
+## Trends by broad category
+
+```{r}
+#| label: broad-category-trends
+#| fig-width: 6
+#| fig-height: 4
+
+staff_classified_year |>
+  filter(
+    year > 2010,
+    year < 2026,
+    category %in% c(
+      "administrative",
+      "communications",
+      "policy",
+      "legal",
+      "temporary",
+      "office leadership",
+      "intergovernmental",
+      "constituent casework",
+      "district",
+      "legislative"
+    )
+  ) |>
+  count(category, year, office_type_id, sort = TRUE) |>
+  mutate(
+    office_type_id = case_when(
+      office_type_id == "HM" ~ "House Member",
+      office_type_id == "SM" ~ "Senate Member",
+      office_type_id == "" ~ " Other Staff",
+      TRUE ~ office_type_id
+    )
+  ) |>
+  ggplot(aes(x = year, y = n, color = category)) +
+  theme(palette.colour.discrete = "Okabe-Ito") +
+  geom_point(alpha = 0.5) +
+  geom_smooth(
+    se = FALSE,
+    method = "lm",
+    linetype = 1
+  ) +
+  #geom_vline(xintercept = 2010) +
+  facet_wrap(vars(office_type_id), scales = "free") +
+  labs(x = "", 
+       y = "",
+       color = "")
+
+### CONSOLIDATING 
+staff_classified_year |>
+  filter(
+    office_type_id != "", 
+    year > 2010,
+    year < 2026,
+    category %in% c(
+      "administrative",
+      "communications",
+      "policy",
+      "legal",
+      "temporary",
+      #"office leadership",
+      "intergovernmental",
+      "constituent casework",
+      "district",
+      "legislative"
+    ) 
+    ) |> 
+  mutate(category = ifelse(
+    category %in% c(
+      #"administrative",
+      #"communications",
+      "policy",
+      "legal",
+      #"temporary",
+      #"office leadership",
+      "intergovernmental",
+      "constituent casework"
+      #"district"#,
+      #"legislative"
+    ),
+    " interbranch",
+    category
+  ) )  |>
+  count(category, year, office_type_id, sort = TRUE) |>
+  mutate(
+    n = ifelse(office_type_id == "HM", n/435, n/100),
+    office_type_id = case_when(
+      office_type_id == "HM" ~ "House",
+      office_type_id == "SM" ~ "Senate",
+      office_type_id == "" ~ " Other Staff",
+      TRUE ~ office_type_id
+    )
+  ) |>
+  ggplot(aes(x = year, y = n, color = category)) +
+  theme(palette.colour.discrete = "Okabe-Ito") +
+  geom_point(alpha = 0.5) +
+  geom_smooth(
+    se = FALSE,
+    method = "lm",
+    linetype = 1
+  ) +
+  #geom_vline(xintercept = 2010) +
+  facet_wrap(vars(office_type_id), scales = "free") +
+  labs(x = "", 
+       y = "",
+       color = "")
+
+
+### CONSOLIDATING 
+staff_classified_year |>
+  filter(
+    office_type_id != "", 
+    year > 2010,
+    year < 2026,
+    category %in% c(
+      #"administrative",
+      "communications",
+      "policy",
+      "legal",
+      #"temporary",
+      #"office leadership",
+      "intergovernmental",
+      "constituent casework",
+      "district",
+      "legislative"
+    ) 
+    ) |> 
+  mutate(category = ifelse(
+    category %in% c(
+      #"administrative",
+      #"communications",
+      "policy",
+      "legal",
+      #"temporary",
+      #"office leadership",
+      "intergovernmental",
+      "constituent casework"
+      #"district"#,
+      #"legislative"
+    ),
+    " interbranch",
+    category
+  ) )  |>
+  count(category, year, office_type_id, sort = TRUE) |>
+  mutate(
+    n = ifelse(office_type_id == "HM", n/435, n/100),
+    office_type_id = case_when(
+      office_type_id == "HM" ~ "House",
+      office_type_id == "SM" ~ "Senate",
+      office_type_id == "" ~ " Other Staff",
+      TRUE ~ office_type_id
+    )
+  ) |>
+  ggplot(aes(x = year, y = n, color = category)) +
+  theme(palette.colour.discrete = "Okabe-Ito") +
+  geom_point(alpha = 0.5) +
+  geom_smooth(
+    se = FALSE,
+    method = "lm",
+    linetype = 1
+  ) +
+  #geom_vline(xintercept = 2010) +
+  scale_y_continuous(limits = c(0,NA)) + 
+  facet_wrap(vars(office_type_id), scales = "free") +
+  labs(x = "", 
+       y = "",
+       color = "")
+```
+
+### Combined House and Senate
+
+excluding administrative 
+
+```{r}
+#| label: broad-category-trends-combined
+#| fig-width: 3.5
+#| fig-height: 2.5
+### CONSOLIDATING - combined 
+staff_classified_year |>
+  filter(
+    office_type_id != "", 
+    year > 2010,
+    year < 2026,
+    category %in% c(
+      #"administrative",
+      "communications",
+      "policy",
+      "legal",
+      #"temporary",
+      #"office leadership",
+      "intergovernmental",
+      "constituent casework",
+      "district",
+      "legislative"
+    ) 
+    ) |> 
+  mutate(category = ifelse(
+    category %in% c(
+      #"administrative",
+      #"communications",
+      "policy",
+      "legal",
+      #"temporary",
+      #"office leadership",
+      "intergovernmental",
+      "constituent casework"
+      #"district"#,
+      #"legislative"
+    ),
+    " interbranch",
+    category
+  ) )  |>
+  count(category, year, sort = TRUE) |>
+  ggplot(aes(x = year, y = n, color = category)) +
+  theme(palette.colour.discrete = "Okabe-Ito") +
+  geom_point(alpha = 0.5) +
+  geom_smooth(
+    se = FALSE,
+    method = "lm",
+    linetype = 1
+  ) +
+    scale_y_continuous(limits = c(0,NA)) + 
+  #geom_vline(xintercept = 2010) +
+  #facet_wrap(vars(office_type_id), scales = "free") +
+  labs(x = "", 
+       y = "",
+       color = "")
+```
+
+## Policy
+
+### Policy subcategory counts
+
+```{r}
+#| label: policy-subcategory-counts
+
+staff_classified_year |>
+  filter(category == "policy") |>
+  count(subcategory, sort = TRUE) |>
+  head(20) |> knitr::kable()
+```
+
+### Titles classified as general policy
+
+```{r}
+#| label: general-policy-titles
+
+staff_classified_year |>
+  filter(subcategory == "policy general") |>
+  count(title_1, sort = TRUE) |>
+  head(20) |> 
+  knitr::kable()
+```
+
+### Policy trends by subcategory
+
+```{r}
+#| label: policy-subcategory-trends
+#| fig-width: 10
+#| fig-height: 7
+
+staff_classified_year |>
+  filter(
+    year > 2010,
+    year < 2026,
+    category == "policy"
+  ) |>
+  count(subcategory, year, office_type_id, sort = TRUE) |>
+  mutate(
+    office_type_id = case_when(
+      office_type_id == "HM" ~ "House",
+      office_type_id == "SM" ~ "Senate",
+      office_type_id == "" ~ "Other",
+      TRUE ~ office_type_id
+    )
+  ) |>
+  ggplot(
+    aes(
+      x = year,
+      y = n,
+      color = subcategory,
+      label = ifelse(year == 2018, subcategory, NA)
+    )
+  ) +
+  geom_text(check_overlap = TRUE, x = 2020) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(
+    se = FALSE,
+    method = "lm",
+    linetype = 1
+  ) +
+  geom_vline(xintercept = 2010) +
+  facet_wrap(vars(office_type_id), scales = "free")
+```
+
+## Communications
+
+### Communications subcategory counts
+
+```{r}
+#| label: communications-subcategory-counts
+
+staff_classified_year |>
+  filter(category == "communications") |>
+  count(subcategory, sort = TRUE) |>
+  head(20) |> knitr::kable()
+```
+
+### Common press and communications titles
+
+```{r}
+#| label: common-press-communications-titles
+
+staff_classified_year |>
+  filter(subcategory == "press and communications") |>
+  count(title_1, sort = TRUE) |>
+  head(20) |>
+  knitr::kable()
+```
+
+### Communications trends by subcategory
+
+```{r}
+#| label: communications-subcategory-trends
+#| fig-width: 10
+#| fig-height: 7
+
+staff_classified_year |>
+  filter(
+    year > 2010,
+    year < 2026,
+    category == "communications"
+  ) |>
+  count(subcategory, year, office_type_id, sort = TRUE) |>
+  group_by(year, office_type_id) |>
+  mutate(
+    rank = percent_rank(n),
+    subcategory = if_else(
+      rank < 0.9,
+      subcategory,
+      "Other"
+    )
+  ) |>
+  ungroup() |>
+  mutate(
+    office_type_id = case_when(
+      office_type_id == "HM" ~ "House Member",
+      office_type_id == "SM" ~ "Senate Member",
+      office_type_id == "" ~ "Other",
+      TRUE ~ office_type_id
+    )
+  ) |>
+  ggplot(
+    aes(
+      x = year,
+      y = n,
+      color = subcategory,
+      label = ifelse(year == 2018, subcategory, NA)
+    )
+  ) +
+  geom_text(check_overlap = TRUE) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(
+    se = FALSE,
+    method = "lm",
+    linetype = 1
+  ) +
+  geom_vline(xintercept = 2010) +
+  facet_wrap(vars(office_type_id), scales = "free")
+```
+
+## Constituent casework
+
+### Constituent casework subcategory counts
+
+```{r}
+#| label: constituent-casework-subcategory-counts
+
+staff_classified_year |>
+  filter(category == "constituent casework") |>
+  count(subcategory, sort = TRUE) |>
+  head(20) |> knitr::kable()
+```
+
+### Common casework titles
+
+```{r}
+#| label: common-casework-titles
+
+staff_classified_year |>
+  filter(subcategory == "casework") |>
+  count(title_1, sort = TRUE) |>
+  head(20) |>
+  knitr::kable()
+```
+
+## District staff
+
+### District subcategory counts
+
+```{r}
+#| label: district-subcategory-counts
+
+staff_classified_year |>
+  filter(category == "district") |>
+  count(subcategory, sort = TRUE) |>
+  head(20) |> knitr::kable()
+```
+
+### Common outreach and field titles
+
+```{r}
+#| label: common-outreach-field-titles
+
+staff_classified_year |>
+  filter(subcategory == "outreach and field") |>
+  count(title_1, sort = TRUE) |>
+  head(20) |>
+  knitr::kable()
+```
+
+### District trends by subcategory
+
+```{r}
+#| label: district-subcategory-trends
+#| fig-width: 10
+#| fig-height: 7
+
+staff_classified_year |>
+  filter(
+    year > 2010,
+    year < 2026,
+    category == "district"
+  ) |>
+  count(subcategory, year, office_type_id, sort = TRUE) |>
+  mutate(
+    office_type_id = case_when(
+      office_type_id == "HM" ~ "House Member",
+      office_type_id == "SM" ~ "Senate Member",
+      office_type_id == "" ~ "Other",
+      TRUE ~ office_type_id
+    )
+  ) |>
+  ggplot(
+    aes(
+      x = year,
+      y = n,
+      color = subcategory,
+      label = ifelse(year == 2018, subcategory, NA)
+    )
+  ) +
+  geom_text(check_overlap = TRUE, x = 2020) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(
+    se = FALSE,
+    method = "lm",
+    linetype = 1
+  ) +
+  geom_vline(xintercept = 2010) +
+  facet_wrap(vars(office_type_id), scales = "free")
+```
+
+## Legislative staff
+
+### Legislative subcategory counts
+
+```{r}
+#| label: legislative-subcategory-counts
+
+staff_classified_year |>
+  filter(category == "legislative") |>
+  count(subcategory, sort = TRUE) |>
+  head(20) |> knitr::kable()
+```
+
+## Administrative staff
+
+### Administrative subcategory counts
+
+```{r}
+#| label: administrative-subcategory-counts
+
+staff_classified_year |>
+  filter(category == "administrative") |>
+  count(subcategory, sort = TRUE) |>
+  head(20) |> knitr::kable()
+```
+
+### Administrative trends by subcategory
+
+```{r}
+#| label: administrative-subcategory-trends
+#| fig-width: 10
+#| fig-height: 7
+
+staff_classified_year |>
+  filter(
+    year > 2010,
+    year < 2026,
+    category == "administrative"
+  ) |>
+  count(subcategory, year, office_type_id, sort = TRUE) |>
+  mutate(
+    office_type_id = case_when(
+      office_type_id == "HM" ~ "House Member",
+      office_type_id == "SM" ~ "Senate Member",
+      office_type_id == "" ~ "Other",
+      TRUE ~ office_type_id
+    )
+  ) |>
+  ggplot(
+    aes(
+      x = year,
+      y = n,
+      color = subcategory,
+      label = ifelse(year == 2018, subcategory, NA)
+    )
+  ) +
+  geom_text(check_overlap = TRUE, x = 2020) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(
+    se = FALSE,
+    method = "lm",
+    linetype = 1
+  ) +
+  geom_vline(xintercept = 2010) +
+  facet_wrap(vars(office_type_id), scales = "free")
+```
+
+## Data coverage over time
+
+```{r}
+#| label: records-over-time
+#| fig-width: 10
+#| fig-height: 6
+
+staff_classified_year |>
+  filter(
+    year > 2000,
+    year < 2026
+  ) |>
+  count(year, office_type_id, sort = TRUE) |>
+  mutate(
+    office_type_id = case_when(
+      office_type_id == "HM" ~ "House Member",
+      office_type_id == "SM" ~ "Senate Member",
+      office_type_id == "" ~ "Other",
+      TRUE ~ office_type_id
+    )
+  ) |>
+  ggplot(aes(x = year, y = n)) +
+  geom_point() +
+  geom_line() +
+  facet_wrap(vars(office_type_id))
+```

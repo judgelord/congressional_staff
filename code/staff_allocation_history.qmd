@@ -1,0 +1,2540 @@
+---
+title: "Congressional staff counts by job category from LegiStorm data"
+subtitle: "Primary employment history from congressional_history.csv"
+author: Devin Judge-Lord
+date: today
+format:
+  html:
+    toc: true
+    code-fold: true
+    self-contained: true
+editor_options:
+  chunk_output_type: console
+---
+
+# Congressional staff counts by job category
+
+This document uses `congressional_history.csv` to calculate congressional staff counts by member office, calendar year, and employee category. Job categories come from `staff_title_lookup.rda`.
+
+The analysis produces three principal datasets:
+
+1. **`staffer_year_primary`**: one row per staffer, member, and year, with one primary employee category.
+2. **`staffer_year_categories_long`**: one row per staffer, member, year, and category; a staffer can appear in multiple categories.
+3. **`member_year_category_counts`**: the number of distinct staffers in each primary category for each member office and year.
+
+The primary-category dataset is the default for member-year category counts because category counts sum to the total number of distinct staffers in the office. The multiple-category result is retained as a sensitivity measure.
+
+## Classification choices
+
+The analysis makes the following choices:
+
+1. `member_id` identifies the member office.
+2. `core_person_id` identifies the staffer.
+3. A staffer is active in every calendar year touched by an employment spell.
+4. Missing end dates are censored at the analysis endpoint.
+5. Partial start dates are bounded at the beginning of their possible intervals.
+6. Partial end dates are bounded at the end of their possible intervals.
+7. End dates at the start of a new odd-year Congress are assigned to December 31 of the prior year, following the rule used in the experience analysis.
+8. Records classified as `temporary` are excluded.
+9. Missing or unmatched categories are labeled `unclassified`.
+10. Overlapping spells within the same staffer, member, year, and category are merged before active days are calculated.
+11. If a staffer has several categories in the same member-year, the primary category is selected by:
+    - greatest number of active days;
+    - latest category end date;
+    - latest category start date;
+    - alphabetical category as the final deterministic tie-breaker.
+12. Plots display the seven most common primary categories. All remaining categories are grouped as `other`.
+
+# Data
+
+Primary data:
+
+- `congressional_history.csv`
+
+Supporting data:
+
+- `staff_title_lookup.rda`
+- `member.csv`
+- `core_person.csv`
+- `office.csv`
+- `office_type.csv`
+- `members` from the `legislators` package
+
+# Setup
+
+```{r}
+#| label: setup
+#| warning: false
+#| message: false
+
+library(tidyverse)
+library(data.table)
+library(here)
+library(scales)
+library(legislators)
+
+here::here("code", "qmd_global_options.R") |>
+  source()
+
+knitr::opts_chunk$set(
+  fig.width = 8,
+  fig.height = 5.5,
+  fig.path = "../figs/"
+)
+
+data_dir <- here(
+  "data",
+  "legistorm",
+  "LegistormDataWisconsin2026",
+  "Data"
+)
+
+analysis_end <- as.Date("2026-12-31")
+
+history <- fread(
+  file.path(data_dir, "congressional_history.csv"),
+  na.strings = c("", "NA", "NULL")
+) |>
+  as_tibble()
+
+member <- fread(
+  file.path(data_dir, "member.csv"),
+  na.strings = c("", "NA", "NULL")
+) |>
+  as_tibble()
+
+person <- fread(
+  file.path(data_dir, "core_person.csv"),
+  na.strings = c("", "NA", "NULL")
+) |>
+  as_tibble()
+
+office <- fread(
+  file.path(data_dir, "office.csv"),
+  na.strings = c("", "NA", "NULL")
+) |>
+  as_tibble()
+
+office_type <- fread(
+  file.path(data_dir, "office_type.csv"),
+  na.strings = c("", "NA", "NULL")
+) |>
+  as_tibble()
+
+load(
+  file = here(
+    "data",
+    "staff_title_lookup.rda"
+  )
+)
+
+staff_title_lookup <- as_tibble(staff_title_lookup)
+```
+
+# 1. Inspect and standardize the title lookup
+
+The title lookup must contain a job-title field that matches `history$position_title` and a `category` field.
+
+The code below detects the title key from several plausible names. If the lookup uses another key name, add it to `title_key_candidates`.
+
+```{r}
+#| label: identify-title-lookup-key
+
+title_key_candidates <- c(
+  "position_title",
+  "salary_title",
+  "original_title",
+  "title"
+)
+
+title_lookup_key <- intersect(
+  title_key_candidates,
+  names(staff_title_lookup)
+)
+
+if (length(title_lookup_key) != 1L) {
+  stop(
+    paste0(
+      "Expected exactly one title key in staff_title_lookup. Found: ",
+      paste(title_lookup_key, collapse = ", "),
+      ". Available columns are: ",
+      paste(names(staff_title_lookup), collapse = ", ")
+    )
+  )
+}
+
+if (!"category" %in% names(staff_title_lookup)) {
+  stop(
+    "staff_title_lookup must contain a column named `category`."
+  )
+}
+
+title_lookup_key
+```
+
+Both source titles and lookup titles are normalized for matching. Normalization changes only the join key; the original title remains available for inspection.
+
+```{r}
+#| label: standardize-title-lookup
+
+normalize_title <- function(x) {
+  x |>
+    as.character() |>
+    str_squish() |>
+    str_to_lower()
+}
+
+staff_title_lookup_clean <- staff_title_lookup |>
+  transmute(
+    position_title_key =
+      normalize_title(.data[[title_lookup_key]]),
+    category = as.character(category),
+    across(
+      any_of(
+        c(
+          "classification_1",
+          "classification_2"
+        )
+      ),
+      as.character
+    )
+  ) |>
+  filter(
+    !is.na(position_title_key),
+    position_title_key != ""
+  ) |>
+  distinct()
+
+lookup_conflicts <- staff_title_lookup_clean |>
+  distinct(
+    position_title_key,
+    category
+  ) |>
+  count(
+    position_title_key,
+    name = "category_count"
+  ) |>
+  filter(category_count > 1L)
+
+lookup_conflicts |>
+  arrange(
+    desc(category_count),
+    position_title_key
+  ) |>
+  knitr::kable(
+    caption = paste(
+      "Normalized job titles assigned",
+      "to multiple categories"
+    )
+  )
+```
+
+A title-to-category lookup should assign each normalized title to exactly one category. The next step stops if conflicts exist because a many-to-many lookup would duplicate employment records and inflate counts.
+
+```{r}
+#| label: validate-title-lookup
+
+if (nrow(lookup_conflicts) > 0L) {
+  stop(
+    paste0(
+      nrow(lookup_conflicts),
+      " normalized titles map to multiple categories. ",
+      "Resolve these conflicts in staff_title_lookup ",
+      "before continuing."
+    )
+  )
+}
+
+staff_title_lookup_clean <-
+  staff_title_lookup_clean |>
+  distinct(
+    position_title_key,
+    .keep_all = TRUE
+  )
+```
+
+# 2. Join job categories to congressional history
+
+The join retains all congressional-history records. Unmatched and missing categories are labeled `unclassified`. Temporary positions are then excluded.
+
+```{r}
+#| label: join-history-to-title-categories
+
+history <- history |>
+  mutate(
+    position_title_key =
+      normalize_title(position_title)
+  ) |>
+  left_join(
+    staff_title_lookup_clean,
+    by = "position_title_key",
+    relationship = "many-to-one"
+  ) |>
+  mutate(
+    category = case_when(
+      is.na(category) ~ "unclassified",
+      str_squish(category) == "" ~ "unclassified",
+      TRUE ~ str_squish(category)
+    )
+  ) 
+```
+
+The following diagnostics show classification coverage. A high `unclassified` share may indicate unmatched title strings or incomplete lookup coverage.
+
+```{r}
+#| label: summarize-title-classification-coverage
+
+classification_coverage <- history |>
+  summarise(
+    records = n(),
+    distinct_titles =
+      n_distinct(position_title),
+    distinct_staffers =
+      n_distinct(core_person_id),
+    .by = category
+  ) |>
+  arrange(desc(records))
+
+classification_coverage |>
+  knitr::kable(
+    caption = paste(
+      "Congressional-history",
+      "classification coverage"
+    )
+  )
+```
+
+```{r}
+#| label: inspect-unclassified-titles
+
+unclassified_titles <- history |>
+  filter(category == "unclassified") |>
+  group_by(office_type_id, position_title) |> 
+  summarise(
+    records = n(),
+    distinct_staffers =
+      n_distinct(core_person_id)  ) |>
+  arrange(desc(records)) |> 
+  left_join(office_type) |> 
+  ungroup()
+
+unclassified_titles |>
+  select(position_title, name, records, distinct_staffers) |> 
+  mutate(position_title = str_to_lower(position_title)) |> 
+  #slice_head(n = 50) |>
+  knitr::kable(
+    caption = paste(
+      "Fifty most common",
+      "unclassified job titles"
+    )
+  )
+```
+
+# 3. Reconcile office-type identifiers
+
+`congressional_history.csv` includes `office_type_id`, but some missing values can be recovered from `office.csv` using `office_id`. The original history value is retained when present.
+
+The office type is descriptive and does not determine category counts.
+
+::: {.note}
+Currently using the more limited version (personal staff only for allocation)
+
+Flip `office_type_id_from_office` and  `office_type_id` to get a measures with all staff under one's control.
+
+:::
+
+
+
+```{r}
+#| label: reconcile-office-type-identifiers
+
+office_type_lookup <- office |>
+  select(
+    office_id,
+    office_type_id_from_office =
+      office_type_id
+  ) |>
+  distinct(
+    office_id,
+    .keep_all = TRUE
+  )
+
+history <- history |>
+  left_join(
+    office_type_lookup,
+    by = "office_id",
+    relationship = "many-to-one"
+  ) |>
+  mutate(
+    office_type_id_original =
+      office_type_id,
+    office_type_id = coalesce(
+      office_type_id,
+      office_type_id_from_office
+    ),
+    office_type_id2 = coalesce(
+      office_type_id_from_office,
+      office_type_id
+    ),
+    chamber_from_office_type =
+      case_when(
+        str_detect(
+          office_type_id,
+          "^H"
+        ) ~ "House",
+        str_detect(
+          office_type_id,
+          "^S"
+        ) ~ "Senate",
+        TRUE ~ NA_character_
+      )
+  )
+```
+
+```{r}
+#| label: inspect-reconciled-office-types
+
+history |>
+  left_join(
+    office_type |>
+      select(
+        office_type_id,
+        office_type_name = name
+      ),
+    by = "office_type_id",
+    relationship = "many-to-one"
+  ) |>
+  left_join(
+    office_type |>
+      select(
+        office_type_id2 = office_type_id,
+        office_type_name2 = name
+      ),
+    by = "office_type_id2",
+    relationship = "many-to-one"
+  ) |>
+  count(
+    office_type_id,
+    office_type_id2,
+    office_type_name,
+    office_type_name2,
+    sort = TRUE
+  ) |>
+  knitr::kable(
+    caption = "Reconciled office types"
+  )
+```
+
+# 4. Parse LegiStorm partial dates
+
+The parser follows the date choices used in the experience analysis:
+
+- Start `YYYY-MM-00` becomes the first day of the month.
+- End `YYYY-MM-00` becomes the last day of the month.
+- Start `YYYY-00-00` becomes January 1.
+- End `YYYY-00-00` becomes December 31.
+- An end date at an odd-year congressional boundary is reassigned to December 31 of the prior year.
+- Start dates are not shifted across congressional boundaries.
+
+```{r}
+#| label: define-congress-aware-partial-date-parser
+
+parse_partial_date <- function(
+  x,
+  bound = c("start", "end")
+) {
+  bound <- match.arg(bound)
+
+  x <- as.character(x) |>
+    str_squish()
+
+  x[x %in% c("", "NA", "NULL")] <-
+    NA_character_
+
+  year <- suppressWarnings(
+    as.integer(str_sub(x, 1, 4))
+  )
+
+  month <- suppressWarnings(
+    as.integer(str_sub(x, 6, 7))
+  )
+
+  day <- suppressWarnings(
+    as.integer(str_sub(x, 9, 10))
+  )
+
+  original_month <- month
+  original_day <- day
+
+  month_missing <-
+    is.na(month) | month == 0L
+
+  day_missing <-
+    is.na(day) | day == 0L
+
+  month[month_missing] <-
+    if (bound == "start") 1L else 12L
+
+  day[day_missing] <- 1L
+
+  valid_base <- (
+    !is.na(year) &
+      !is.na(month) &
+      month >= 1L &
+      month <= 12L &
+      !is.na(day)
+  )
+
+  result <- rep(
+    as.Date(NA),
+    length(x)
+  )
+
+  result[valid_base] <- as.Date(
+    sprintf(
+      "%04d-%02d-%02d",
+      year[valid_base],
+      month[valid_base],
+      day[valid_base]
+    ),
+    format = "%Y-%m-%d"
+  )
+
+  if (bound == "end") {
+    use_month_end <-
+      valid_base & day_missing
+
+    next_month <- as.Date(
+      sprintf(
+        "%04d-%02d-01",
+        year[use_month_end] +
+          as.integer(
+            month[use_month_end] == 12L
+          ),
+        if_else(
+          month[use_month_end] == 12L,
+          1L,
+          month[use_month_end] + 1L
+        )
+      )
+    )
+
+    result[use_month_end] <-
+      next_month - 1L
+
+    congress_boundary_end <- (
+      valid_base &
+        year %% 2L == 1L &
+        (
+          is.na(original_month) |
+            original_month == 0L |
+            (
+              original_month == 1L &
+                (
+                  is.na(original_day) |
+                    original_day == 0L |
+                    original_day == 1L
+                )
+            )
+        )
+    )
+
+    result[congress_boundary_end] <-
+      as.Date(
+        sprintf(
+          "%04d-12-31",
+          year[congress_boundary_end] - 1L
+        )
+      )
+  }
+
+  result
+}
+```
+
+```{r}
+#| label: test-partial-date-parser
+
+test_dates <- c(
+  "2011-01-01",
+  "2011-01-02",
+  "2012-12-00",
+  "2013-00-00",
+  "2013-01-00"
+)
+
+tibble(
+  original = test_dates,
+  parsed_start = parse_partial_date(
+    test_dates,
+    bound = "start"
+  ),
+  parsed_end = parse_partial_date(
+    test_dates,
+    bound = "end"
+  )
+) |>
+  knitr::kable(
+    caption = "Tests of the partial-date parser"
+  )
+```
+
+# 5. Prepare employment spells
+
+Only records with a staff identifier, member identifier, valid start date, and valid end date are included in member-office counts.
+
+A missing `member_id` cannot be assigned to a member office and is therefore excluded from the main outputs. The number of excluded records is reported first.
+
+```{r}
+#| label: inspect-records-without-member-identifiers
+
+history |>
+  mutate(
+    missing_member_id =
+      is.na(member_id)
+  ) |>
+  summarise(
+    records = n(),
+    distinct_staffers =
+      n_distinct(core_person_id),
+    .by = missing_member_id
+  ) |>
+  arrange(missing_member_id) |>
+  knitr::kable(
+    caption = paste(
+      "Congressional-history records",
+      "by member-ID availability"
+    )
+  )
+```
+
+```{r}
+#| label: prepare-category-employment-spells
+
+history <- history |>
+  mutate(
+    job_start = parse_partial_date(
+      start_date,
+      bound = "start"
+    ),
+    job_end = parse_partial_date(
+      end_date,
+      bound = "end"
+    ),
+    start_date_precision = case_when(
+      is.na(start_date) ~ "missing",
+      str_detect(
+        start_date,
+        "-00-00$"
+      ) ~ "year",
+      str_detect(
+        start_date,
+        "-00$"
+      ) ~ "month",
+      TRUE ~ "day"
+    ),
+    end_date_precision = case_when(
+      is.na(end_date) ~ "missing",
+      str_detect(
+        end_date,
+        "-00-00$"
+      ) ~ "year",
+      str_detect(
+        end_date,
+        "-00$"
+      ) ~ "month",
+      TRUE ~ "day"
+    ),
+    job_end = if_else(
+      is.na(end_date) & is.na(job_end),
+      analysis_end,
+      job_end
+    )
+  )
+
+category_jobs <- history |>
+  filter(
+    !is.na(core_person_id),
+    !is.na(member_id),
+    !is.na(job_start),
+    !is.na(job_end),
+    job_end >= job_start
+  ) |>
+  select(
+    congressional_history_id,
+    core_person_id,
+    member_id,
+    office_id,
+    office_type_id,
+    office_type_id2,
+    chamber_from_office_type,
+    position_title,
+    category,
+    job_start,
+    job_end,
+    start_date_precision,
+    end_date_precision
+  )
+```
+
+```{r}
+#| label: summarize-category-employment-spells
+
+category_jobs |>
+  summarise(
+    records = n(),
+    distinct_staffers =
+      n_distinct(core_person_id),
+    distinct_members =
+      n_distinct(member_id),
+    first_start =
+      min(job_start, na.rm = TRUE),
+    last_end =
+      max(job_end, na.rm = TRUE)
+  ) |>
+  knitr::kable(
+    caption = paste(
+      "Employment spells used",
+      "in the category analysis"
+    )
+  )
+```
+
+# 6. Expand employment spells into staffer-years
+
+Each employment spell is divided into the calendar years it touches. `active_start` and `active_end` identify the portion of the spell within each year.
+
+```{r}
+#| label: expand-category-jobs-to-years
+
+category_job_year_intervals <-
+  category_jobs |>
+  mutate(
+    first_year =
+      lubridate::year(job_start),
+    last_year =
+      lubridate::year(job_end),
+    year = map2(
+      first_year,
+      last_year,
+      \(first, last) {
+        if (
+          is.na(first) ||
+            is.na(last) ||
+            last < first
+        ) {
+          integer()
+        } else {
+          seq.int(first, last)
+        }
+      }
+    )
+  ) |>
+  unnest_longer(
+    year,
+    values_to = "year"
+  ) |>
+  mutate(
+    year = as.integer(year),
+    year_start = as.Date(
+      sprintf(
+        "%d-01-01",
+        year
+      )
+    ),
+    year_end = pmin(
+      as.Date(
+        sprintf(
+          "%d-12-31",
+          year
+        )
+      ),
+      analysis_end
+    ),
+    active_start = pmax(
+      job_start,
+      year_start
+    ),
+    active_end = pmin(
+      job_end,
+      year_end
+    )
+  ) |>
+  filter(active_end >= active_start)
+```
+
+# 7. Merge overlapping intervals within categories
+
+A staffer may have multiple records for the same category in a member office during a year because of duplicate records, title changes, or overlapping appointments.
+
+The helper below merges overlapping or adjacent intervals within each staffer, member, year, and category. The interval calculation uses numeric day values internally because `cummax()` is not defined for `Date` objects.
+
+```{r}
+#| label: define-interval-group-helper
+
+assign_interval_groups <- function(
+  active_start,
+  active_end
+) {
+  order_index <- order(
+    active_start,
+    active_end
+  )
+
+  start_ordered <-
+    active_start[order_index]
+
+  end_ordered <-
+    active_end[order_index]
+
+  prior_max_end <- lag(
+    cummax(as.numeric(end_ordered)),
+    default = as.numeric(
+      as.Date("1900-01-01")
+    )
+  )
+
+  interval_group_ordered <- cumsum(
+    as.numeric(start_ordered) >
+      prior_max_end + 1
+  )
+
+  interval_group <- integer(
+    length(active_start)
+  )
+
+  interval_group[order_index] <-
+    interval_group_ordered
+
+  interval_group
+}
+```
+
+```{r}
+#| label: assign-category-interval-groups
+
+category_job_year_intervals <-
+  category_job_year_intervals |>
+  arrange(
+    core_person_id,
+    member_id,
+    year,
+    category,
+    active_start,
+    active_end
+  ) |>
+  group_by(
+    core_person_id,
+    member_id,
+    year,
+    category
+  ) |>
+  mutate(
+    interval_group =
+      assign_interval_groups(
+        active_start,
+        active_end
+      )
+  ) |>
+  ungroup()
+```
+
+```{r}
+#| label: merge-category-intervals
+
+collapse_values <- function(x) {
+  values <- x |>
+    as.character() |>
+    purrr::discard(
+      \(value) {
+        is.na(value) ||
+          str_squish(value) == ""
+      }
+    ) |>
+    unique() |>
+    sort()
+
+  if (length(values) == 0L) {
+    NA_character_
+  } else {
+    paste(
+      values,
+      collapse = " | "
+    )
+  }
+}
+
+first_nonmissing <- function(x) {
+  values <- x[!is.na(x)]
+
+  if (length(values) == 0L) {
+    NA_character_
+  } else {
+    as.character(values[[1L]])
+  }
+}
+
+category_intervals_merged <-
+  category_job_year_intervals |>
+  summarise(
+    active_start =
+      min(active_start),
+    active_end =
+      max(active_end),
+    position_titles =
+      collapse_values(position_title),
+    office_ids =
+      collapse_values(office_id),
+    office_type_ids =
+      collapse_values(office_type_id),
+    office_type_ids2 =
+      collapse_values(office_type_id2),
+    chamber_from_office_type =
+      first_nonmissing(
+        chamber_from_office_type
+      ),
+    .by = c(
+      core_person_id,
+      member_id,
+      year,
+      category,
+      interval_group
+    )
+  )
+```
+
+# 8. Create the long staffer-year-category output
+
+`staffer_year_categories_long` has one row per staffer, member, year, and category. It preserves multiple categories per staffer-year.
+
+`active_days_in_category` is the union of all days assigned to the category within the member-year, so overlapping records in the same category are not double-counted.
+
+::: {.important}
+The code chunk below subsets to people serving in personal offices, not supervised by members outside of personal offices.
+:::
+
+
+```{r}
+#| label: create-long-staffer-year-category-output
+
+
+staffer_year_categories_long <-
+  category_intervals_merged |>
+  ## FIXME THIS IS WHEREW OFFICE_IDS and OFFICE_IDS2 need to be retained
+  ################################
+  #FIXME just dropping non personal staff right here for now
+  filter(str_detect(office_type_ids2, "HM|SM")) |> 
+  ################################
+  summarise(
+    active_days_in_category = sum(
+      as.integer(
+        active_end - active_start
+      ) + 1L
+    ),
+    category_start =
+      min(active_start),
+    category_end =
+      max(active_end),
+    position_titles =
+      collapse_values(position_titles),
+    office_ids =
+      collapse_values(office_ids),
+    office_type_ids =
+      collapse_values(
+        office_type_ids
+      ),
+    office_type_ids2 =
+      collapse_values(
+        office_type_ids2
+      ),
+    chamber_from_office_type =
+      first_nonmissing(
+        chamber_from_office_type
+      ),
+    .by = c(
+      core_person_id,
+      member_id,
+      year,
+      category
+    )
+  ) |>
+  mutate(
+    days_in_observed_year =
+      as.integer(
+        pmin(
+          as.Date(
+            sprintf(
+              "%d-12-31",
+              year
+            )
+          ),
+          analysis_end
+        ) -
+          as.Date(
+            sprintf(
+              "%d-01-01",
+              year
+            )
+          )
+      ) + 1L,
+    category_year_fraction = pmin(
+      active_days_in_category /
+        days_in_observed_year,
+      1
+    )
+  )
+```
+
+A staffer can appear in multiple categories in this dataset. Therefore, summing category counts from the long data may exceed the office's distinct staff count.
+
+```{r}
+#| label: inspect-multiple-category-staffer-years
+
+staffer_year_category_multiplicity <-
+  staffer_year_categories_long |>
+  summarise(
+    category_count =
+      n_distinct(category),
+    .by = c(
+      core_person_id,
+      member_id,
+      year
+    )
+  )
+
+staffer_year_category_multiplicity |>
+  count(
+    category_count,
+    name = "staffer_member_years"
+  ) |>
+  arrange(category_count) |>
+  knitr::kable(
+    caption = paste(
+      "Number of categories per",
+      "staffer–member–year"
+    )
+  )
+```
+
+# 9. Select one primary category per staffer-year
+
+The primary category is the category with the greatest number of active days during the member-year. Ties are resolved using the latest category end date, latest category start date, and alphabetical category.
+
+This choice yields exactly one row per staffer, member, and year. Consequently, member-year category counts sum to the member office's total distinct staff count.
+
+```{r}
+#| label: identify-primary-category-ties
+
+primary_category_ties <-
+  staffer_year_categories_long |>
+  mutate(
+    maximum_active_days =
+      max(
+        active_days_in_category,
+        na.rm = TRUE
+      ),
+    primary_category_tied =
+      sum(
+        active_days_in_category ==
+          maximum_active_days
+      ) > 1L,
+    .by = c(
+      core_person_id,
+      member_id,
+      year
+    )
+  ) |>
+  distinct(
+    core_person_id,
+    member_id,
+    year,
+    primary_category_tied
+  )
+```
+
+```{r}
+#| label: create-primary-staffer-year-output
+
+staffer_year_primary <-
+  staffer_year_categories_long |>
+  arrange(
+    core_person_id,
+    member_id,
+    year,
+    desc(active_days_in_category),
+    desc(category_end),
+    desc(category_start),
+    category
+  ) |>
+  slice_head(
+    n = 1L,
+    by = c(
+      core_person_id,
+      member_id,
+      year
+    )
+  ) |>
+  rename(
+    primary_category = category
+  ) |>
+  left_join(
+    primary_category_ties,
+    by = c(
+      "core_person_id",
+      "member_id",
+      "year"
+    ),
+    relationship = "one-to-one"
+  )
+```
+
+```{r}
+#| label: validate-primary-staffer-year-output
+
+primary_key_check <-
+  staffer_year_primary |>
+  count(
+    core_person_id,
+    member_id,
+    year
+  ) |>
+  filter(n > 1L)
+
+if (nrow(primary_key_check) > 0L) {
+  stop(
+    paste(
+      "staffer_year_primary contains duplicate",
+      "staffer–member–year keys."
+    )
+  )
+}
+
+staffer_year_primary |>
+  summarise(
+    staffer_member_years = n(),
+    tied_primary_category = sum(
+      primary_category_tied,
+      na.rm = TRUE
+    ),
+    tied_share = mean(
+      primary_category_tied,
+      na.rm = TRUE
+    )
+  ) |>
+  knitr::kable(
+    digits = 3,
+    caption = paste(
+      "Primary-category assignment",
+      "diagnostics"
+    )
+  )
+```
+
+# 10. Add member identifiers and Voteview metadata
+
+LegiStorm's `icpsr_id` is not consistently time-varying. As in the experience analysis, member metadata are joined in two stages:
+
+1. Attach `bioname` using `bioguide_id`.
+2. Attach the time-varying Voteview `icpsr` using `bioname`, `bioguide_id`, and Congress.
+
+The same special handling for Robert Menendez is retained from the experience workflow.
+
+```{r}
+#| label: define-year-to-congress
+
+year_to_congress <- function(year) {
+  year <- as.integer(year)
+
+  if (
+    anyNA(year) ||
+      any(year < 1789L)
+  ) {
+    stop(
+      paste(
+        "Year must contain nonmissing integers",
+        "greater than or equal to 1789."
+      )
+    )
+  }
+
+  floor(
+    (year - 1789L) / 2L
+  ) + 1L
+}
+```
+
+```{r}
+#| label: prepare-member-identifiers
+
+member_names <- member |>
+  mutate(
+    core_person_id =
+      as.integer(core_person_id),
+    member_id =
+      as.integer(member_id)
+  ) |>
+  left_join(
+    person |>
+      transmute(
+        core_person_id =
+          as.integer(core_person_id),
+        member_first_name =
+          first_name,
+        member_last_name =
+          last_name
+      ),
+    by = "core_person_id",
+    relationship = "many-to-one"
+  )
+
+members_prepared <- members |>
+  group_by(bioguide_id) |>
+  mutate(
+    first_congress =
+      congress ==
+      min(
+        congress,
+        na.rm = TRUE
+      ),
+    congresses =
+      congress -
+      min(
+        congress,
+        na.rm = TRUE
+      ) + 1L
+  ) |>
+  ungroup()
+```
+
+The following helper applies the same member-key correction to both staffer-year outputs.
+
+```{r}
+#| label: define-member-metadata-join
+
+add_member_metadata <- function(data) {
+  data |>
+    left_join(
+      member_names |>
+        transmute(
+          member_id =
+            as.integer(member_id),
+          legistorm_icpsr_id =
+            as.character(icpsr_id),
+          bioguide_id =
+            as.character(bioguide_id),
+          member_first_name,
+          member_last_name
+        ) |>
+        distinct(
+          member_id,
+          .keep_all = TRUE
+        ),
+      by = "member_id",
+      relationship = "many-to-one"
+    ) |>
+    mutate(
+      congress =
+        year_to_congress(year)
+    ) |>
+    left_join(
+      members_prepared |>
+        distinct(
+          bioguide_id,
+          bioname
+        ),
+      by = "bioguide_id",
+      relationship = "many-to-one"
+    ) |>
+    left_join(
+      members_prepared |>
+        transmute(
+          bioname,
+          bioguide_id,
+          congress =
+            as.integer(congress),
+          icpsr =
+            as.character(icpsr),
+          chamber =
+            as.character(chamber),
+          first_congress =
+            as.logical(first_congress),
+          congresses =
+            as.integer(congresses)
+        ) |>
+        distinct(),
+      by = c(
+        "bioname",
+        "bioguide_id",
+        "congress"
+      ),
+      relationship = "many-to-many"
+    ) |>
+    distinct() |>
+    relocate(
+      congress,
+      year
+    )
+}
+```
+
+
+
+```{r}
+#| label: add-member-metadata-to-staffer-year-outputs
+
+staffer_year_primary <-
+  add_member_metadata(
+    staffer_year_primary
+  ) |>
+  filter(!is.na(chamber))
+
+staffer_year_categories_long <-
+  add_member_metadata(
+    staffer_year_categories_long
+  ) |>
+  filter(!is.na(chamber))
+```
+
+The Voteview join can legitimately produce more than one record when a member changed party or chamber within a Congress. The next diagnostic checks whether the final staffer-year key is duplicated after applying the correction.
+
+Exclude people who did not serve the full year 
+
+```{r}
+# drop people who did not serve full terms 
+source(here::here("code", "member-years-to-exclude.R"))
+
+exclude$icpsr <- as.numeric(exclude$icpsr)
+
+staffer_year_primary <- staffer_year_primary |>
+  mutate(icpsr = as.numeric(icpsr)) |> 
+  anti_join(exclude, by = c("year", "chamber", "icpsr"))
+
+staffer_year_categories_long <- staffer_year_categories_long |>
+    mutate(icpsr = as.numeric(icpsr)) |> 
+  anti_join(exclude, by = c("year", "chamber", "icpsr"))
+
+```
+
+
+
+
+```{r}
+#| label: inspect-staffer-year-metadata-duplicates
+
+staffer_year_metadata_duplicates <-
+  staffer_year_primary |>
+  count(
+    core_person_id,
+    member_id,
+    year,
+    primary_category
+  ) |>
+  filter(n > 1L)
+
+staffer_year_metadata_duplicates |>
+  slice_head(n = 50) |>
+  knitr::kable(
+    caption = paste(
+      "Duplicate staffer-year keys after",
+      "adding member metadata"
+    )
+  )
+```
+
+If duplicates remain because Voteview contains multiple valid rows for the same member and Congress, the primary analytic unit remains `core_person_id × member_id × year`. The following step deterministically retains one metadata row per key, preferring nonmissing `icpsr`, `chamber`, and `bioname`.
+
+```{r}
+#| label: deduplicate-staffer-year-member-metadata
+
+staffer_year_primary <-
+  staffer_year_primary |>
+  arrange(
+    core_person_id,
+    member_id,
+    year,
+    is.na(icpsr),
+    is.na(chamber),
+    is.na(bioname)
+  ) |>
+  slice_head(
+    n = 1L,
+    by = c(
+      core_person_id,
+      member_id,
+      year
+    )
+  )
+
+staffer_year_categories_long <-
+  staffer_year_categories_long |>
+  arrange(
+    core_person_id,
+    member_id,
+    year,
+    category,
+    is.na(icpsr),
+    is.na(chamber),
+    is.na(bioname)
+  ) |>
+  slice_head(
+    n = 1L,
+    by = c(
+      core_person_id,
+      member_id,
+      year,
+      category
+    )
+  )
+```
+
+# 11. Save staffer-year outputs
+
+The primary file contains exactly one category per staffer–member–year. The long file retains all observed categories.
+
+```{r}
+#| label: save-staffer-year-category-outputs
+
+save(
+  staffer_year_primary,
+  file = here(
+    "data",
+    #"legistorm",
+    "staffer_year_primary_category.rda"
+  )
+)
+
+save(
+  staffer_year_categories_long,
+  file = here(
+    "data",
+    #"legistorm",
+    "staffer_year_categories_long.rda"
+  )
+)
+```
+
+```{r}
+#| label: preview-staffer-year-primary-output
+
+staffer_year_primary |>
+  select(
+    congress,
+    year,
+    member_id,
+    icpsr,
+    bioguide_id,
+    bioname,
+    chamber,
+    core_person_id,
+    primary_category,
+    active_days_in_category,
+    category_year_fraction,
+    primary_category_tied,
+    position_titles
+  ) |>
+  arrange(
+    year,
+    chamber,
+    bioname,
+    core_person_id
+  ) |>
+  slice_head(n = 25) |>
+  knitr::kable(
+    caption = paste(
+      "Example primary-category",
+      "staffer-year records"
+    )
+  )
+```
+
+# 12. Create member-year category counts
+
+`member_year_category_counts` is the principal member-level output. It counts distinct staffers assigned to each primary category.
+
+Because each staffer has one primary category per member-year, the category counts should sum to `total_staff_count`.
+
+
+```{r}
+#| label: create-member-year-category-counts
+
+member_year_keys <- c(
+  "year",
+  "congress",
+  "first_congress",
+  "congresses",
+  "member_id",
+  "icpsr",
+  "bioguide_id",
+  "bioname",
+  "chamber"
+)
+
+
+member_year_category_counts <-
+  staffer_year_primary |>
+  summarise(
+    staff_count =
+      n_distinct(core_person_id),
+    mean_active_days_in_category =
+      as.numeric(
+        mean(
+          active_days_in_category,
+          na.rm = TRUE
+        )
+      ),
+    median_active_days_in_category =
+      as.numeric(
+        median(
+          active_days_in_category,
+          na.rm = TRUE
+        )
+      ),
+    .by = c(
+      all_of(member_year_keys),
+      primary_category
+    )
+  )
+
+member_year_totals <-
+  staffer_year_primary |>
+  summarise(
+    total_staff_count =
+      n_distinct(core_person_id),
+    .by = all_of(member_year_keys)
+  )
+
+member_year_category_counts <-
+  member_year_category_counts |>
+  left_join(
+    member_year_totals,
+    by = member_year_keys,
+    relationship = "many-to-one"
+  ) |>
+  mutate(
+    category_staff_share =
+      staff_count /
+      total_staff_count
+  ) |>
+  arrange(
+    member_id,
+    year,
+    desc(staff_count),
+    primary_category
+  )
+```
+
+# 13. Validate member-year counts
+
+The sum of primary-category counts should equal the distinct total staff count for every member-year.
+
+```{r}
+#| label: validate-member-year-category-counts
+
+member_year_count_check <-
+  member_year_category_counts |>
+  summarise(
+    category_count_sum =
+      sum(staff_count),
+    total_staff_count =
+      first(total_staff_count),
+    difference =
+      category_count_sum -
+      total_staff_count,
+    .by = c(
+      member_id,
+      year
+    )
+  )
+
+member_year_count_check |>
+  summarise(
+    member_years = n(),
+    mismatched_member_years =
+      sum(difference != 0L),
+    maximum_absolute_difference =
+      max(
+        abs(difference),
+        na.rm = TRUE
+      )
+  ) |>
+  knitr::kable(
+    caption = paste(
+      "Validation of primary-category",
+      "staff counts"
+    )
+  )
+```
+
+The long-category sensitivity output counts a person in every category held during the member-year. Its category counts can therefore sum to more than the office total.
+
+```{r}
+#| label: create-multiple-category-member-year-counts
+
+member_year_category_counts_multiple <-
+  staffer_year_categories_long |>
+  summarise(
+    staff_count =
+      n_distinct(core_person_id),
+    .by = c(
+      all_of(member_year_keys),
+      category
+    )
+  ) |>
+  arrange(
+    member_id,
+    year,
+    desc(staff_count),
+    category
+  )
+```
+
+# 14. Create wide member-year output
+
+The wide output provides one row per member-year and one staff-count column per category. Category names are converted to syntactically safe snake-case column names.
+
+The long output remains preferable for most analysis and plotting because it accommodates future categories without changing the schema.
+
+```{r}
+#| label: create-wide-member-year-category-counts
+
+member_year_category_counts_wide <-
+  member_year_category_counts |>
+  mutate(
+    category_column =
+      primary_category |>
+      str_to_lower() |>
+      str_replace_all(
+        "[^a-z0-9]+",
+        "_"
+      ) |>
+      str_replace_all(
+        "^_|_$",
+        ""
+      ),
+    category_column =
+      paste0(
+        "staff_count_",
+        category_column
+      )
+  ) |>
+  select(
+    all_of(member_year_keys),
+    total_staff_count,
+    category_column,
+    staff_count
+  ) |>
+  distinct() |>
+  pivot_wider(
+    names_from =
+      category_column,
+    values_from =
+      staff_count,
+    values_fill = 0
+  ) |>
+  arrange(
+    member_id,
+    year
+  )
+```
+
+```{r}
+#| label: save-member-year-category-outputs
+
+save(
+  member_year_category_counts,
+  file = here(
+    "data",
+    #"legistorm",
+    "member_year_category_counts.rda"
+  )
+)
+
+save(
+  member_year_category_counts_multiple,
+  file = here(
+    "data",
+    #"legistorm",
+    "member_year_category_counts_multiple.rda"
+  )
+)
+
+save(
+  member_year_category_counts_wide,
+  file = here(
+    "data",
+    "member_year_category_counts_wide.rda"
+  )
+)
+```
+
+```{r}
+#| label: preview-member-year-category-counts
+
+member_year_category_counts |>
+  select(
+    congress,
+    year,
+    member_id,
+    icpsr,
+    bioname,
+    chamber,
+    primary_category,
+    staff_count,
+    total_staff_count,
+    category_staff_share
+  ) |>
+  arrange(
+    desc(year),
+    chamber,
+    bioname,
+    desc(staff_count)
+  ) |>
+  slice_head(n = 30) |>
+  knitr::kable(
+    digits = 3,
+    caption = paste(
+      "Example member-year",
+      "category counts"
+    )
+  )
+```
+
+# 15. Identify the seven most common categories
+
+The top seven categories are based on the number of staffer–member–year observations in `staffer_year_primary`. All remaining categories are relabeled `other` for plots only.
+
+The saved analytic outputs retain the original categories.
+
+```{r}
+#| label: identify-top-seven-categories
+
+staffer_year_primary$primary_category |> unique()
+
+staffer_year_primary <- staffer_year_primary |>
+  mutate(primary_category2 = case_when(
+    primary_category %in% c("intergovernmental", "legal", "committee") ~ "policy", 
+    primary_category %in% c("office leadership") ~ "administrative", 
+    TRUE ~ primary_category
+  ))
+
+staffer_year_primary$primary_category2 |> unique()
+
+category_frequency <-
+  staffer_year_primary |>
+  group_by(primary_category, primary_category2) |> 
+  summarise(
+    staffer_member_years = n(),
+    distinct_staffers =
+      n_distinct(core_person_id)  
+    ) |>
+  arrange(
+    desc(staffer_member_years),
+    primary_category2
+  )
+
+top_seven_categories <-
+  category_frequency |>
+  ungroup() |> 
+  slice_head(n = 7) |>
+  pull(primary_category2)
+
+category_frequency |>
+  knitr::kable(
+    caption = paste(
+      "Frequency of primary",
+      "employee categories"
+    )
+  )
+
+top_seven_categories |> unique()
+```
+
+```{r}
+#| label: prepare-top-seven-staff-data
+
+category_plot_levels <- c(
+  top_seven_categories |> unique(),
+  "other"
+)
+
+staffer_year_primary_plot <-
+  staffer_year_primary |>
+  mutate(
+    plot_category = if_else(
+      primary_category2 %in%
+        top_seven_categories,
+      primary_category2,
+      "other"
+    ),
+    plot_category = factor(
+      plot_category,
+      levels = category_plot_levels
+    )
+  )
+
+member_year_category_plot <-
+  staffer_year_primary_plot |>
+  summarise(
+    staff_count =
+      n_distinct(core_person_id),
+    .by = c(
+      year,
+      congress,
+      member_id,
+      icpsr,
+      bioguide_id,
+      bioname,
+      chamber,
+      plot_category
+    )
+  )
+```
+
+# 16. Plot staff categories over time
+
+```{r}
+#| label: staff-counts-over-time
+#| fig-width: 2
+#| fig-height: 2
+
+staffer_year_primary_plot |>
+  filter(year > 2000) |>
+  count(
+    year,
+    #plot_category,
+    name = "staffer_member_years"
+  ) |>
+  ggplot(
+    aes(
+      x = year,
+      y = staffer_member_years #color = plot_category
+    )
+  ) +
+  geom_line(linewidth = 0.8) +
+  scale_y_continuous(
+    labels = label_comma(),
+    limits = c(0, NA),
+    expand = expansion(
+      mult = c(0, 0.05)
+    )
+  ) +
+  # scale_color_viridis_d(
+  #   option = "D",
+  #   end = 0.9
+  # ) +
+  labs(
+    x = "",
+    y = "Staffers"
+  ) +
+  geom_vline(xintercept = 2011, linetype = 2) +
+  geom_vline(xintercept = 2025, linetype = 2) 
+```
+
+The first figure shows the total number of staffer–member-year observations in each category. A staffer serving two member offices in the same year contributes once to each office.
+
+```{r}
+#| label: staff-category-counts-over-time
+#| fig-width: 4.5
+#| fig-height: 3
+
+staffer_year_primary_plot |>
+  filter(year > 2000) |>
+  count(
+    year,
+    plot_category,
+    name = "staffer_member_years"
+  ) |>
+  ggplot(
+    aes(
+      x = year,
+      y = staffer_member_years,
+      color = plot_category
+    )
+  ) +
+  geom_line(linewidth = 0.8) +
+  scale_y_continuous(
+    labels = label_comma(),
+    limits = c(0, NA),
+    expand = expansion(
+      mult = c(0, 0.05)
+    )
+  ) +
+  # scale_color_viridis_d(
+  #   option = "D",
+  #   end = 0.9
+  # ) +
+  labs(
+    # title = paste( "Congressional staff"    ),
+    x = "Year",
+    y = "Staffers",
+    color = ""
+  ) +
+  geom_vline(xintercept = 2011, linetype = 2) +
+  geom_vline(xintercept = 2025, linetype = 2) 
+```
+
+```{r}
+#| label: staff-category-counts-over-time2
+#| fig-width: 4.6
+#| fig-height: 3
+
+staffer_year_primary_plot |>
+  mutate(plot_category = 
+           case_when(
+             primary_category2 %in% c("policy", "constituent casework") ~ " interbranch",
+         TRUE ~ primary_category2) ) |>
+  filter(year > 2010, year < 2026,
+     plot_category  %in% c(
+      "communications",
+      " interbranch",
+      "district",
+      "legislative"
+    ) 
+    ) |> 
+  count(
+    year,
+    plot_category,
+    name = "staffer_member_years"
+  ) |>
+  ggplot(
+    aes(
+      x = year,
+      y = staffer_member_years,
+      color = plot_category
+    )
+  ) +
+  geom_line(linewidth = 0.8) +
+  scale_y_continuous(
+    labels = label_comma(),
+    limits = c(0, NA),
+    expand = expansion(
+      mult = c(0, 0.05)
+    )
+  ) +
+  labs(
+    caption = paste(
+      "(excluding interns, admin, committee & leadership staff)"
+    ),
+    #title = "Congressional Staff, 2011-2025",
+    x = "",
+    y = "Total Staff",
+    color = "",
+    # caption = paste(
+    #   "Each staffer is assigned one primary category",
+    #   "within each member office and year."
+    # )
+  ) 
+
+staffer_year_primary_plot |>
+  filter(year > 2010, year < 2026) |>
+  count(
+    year,
+    plot_category,
+    name = "staffer_member_years"
+  ) |>
+  ggplot(
+    aes(
+      x = year,
+      y = staffer_member_years,
+      color = plot_category
+    )
+  ) +
+  geom_line(linewidth = 0.8) +
+  scale_y_continuous(
+    labels = label_comma(),
+    limits = c(0, NA),
+    expand = expansion(
+      mult = c(0, 0.05)
+    )
+  ) +
+  # scale_color_viridis_d(
+  #   option = "D",
+  #   end = 0.9
+  # ) +
+  labs(
+    #title = paste(  "Congressional Staff, 2011-2025"    ),
+    x = "",
+    y = "Total Staff",
+    color = ""
+  )
+```
+
+```{r}
+#| label: staff-category-mean-over-time2
+#| fig-width: 5
+#| fig-height: 3
+
+staffer_year_primary_plot |>
+  mutate(plot_category = 
+           case_when(
+             primary_category2 %in% c("policy", "constituent casework") ~ " interbranch",
+         TRUE ~ primary_category2) ) |>
+  filter(year > 2010, year < 2026,
+     plot_category  %in% c(
+      "communications",
+      " interbranch",
+      "district",
+      "legislative"
+    ) 
+    ) |> 
+  count(
+    year,
+    chamber,
+    plot_category,
+    name = "staffer_member_years"
+  ) |>
+  mutate(staffer_member_years = ifelse(
+    chamber == "House",
+    staffer_member_years/435,
+    staffer_member_years/100
+         ) ) |> 
+  ggplot(
+    aes(
+      x = year,
+      y = staffer_member_years,
+      color = plot_category
+    )
+  ) +
+  geom_line(linewidth = 0.8) +
+  scale_y_continuous(
+    labels = label_comma(),
+    limits = c(0, NA),
+    expand = expansion(
+      mult = c(0, 0.05)
+    )
+  ) +
+  labs(
+    caption = paste(
+      "(excluding interns, admin, committee & leadership staff)"
+    ),
+    #title = "Congressional Staff, 2011-2025",
+    x = "",
+    y = "Avg. Office Staff",
+    color = "",
+    # caption = paste(
+    #   "Each staffer is assigned one primary category",
+    #   "within each member office and year."
+    # )
+  ) +
+  facet_wrap("chamber", scales= "free_y")
+
+staffer_year_primary_plot |>
+  filter(year > 2010, year < 2026) |>
+  count(
+    year,
+    chamber,
+    plot_category,
+    name = "staffer_member_years"
+  ) |>
+  mutate(staffer_member_years = ifelse(
+    chamber == "House",
+    staffer_member_years/435,
+    staffer_member_years/100
+         ) ) |> 
+  ggplot(
+    aes(
+      x = year,
+      y = staffer_member_years,
+      color = plot_category
+    )
+  ) +
+  geom_line(linewidth = 0.8) +
+  scale_y_continuous(
+    labels = label_comma(),
+    limits = c(0, NA),
+    expand = expansion(
+      mult = c(0, 0.05)
+    )
+  ) +
+  # scale_color_viridis_d(
+  #   option = "D",
+  #   end = 0.9
+  # ) +
+  labs(
+    #title = paste(  "Congressional Staff, 2011-2025"    ),
+    x = "",
+    y = "Avg. Staffers",
+    color = ""
+  )+
+  facet_wrap("chamber", scales= "free_y")
+```
+
+The proportional figure shows how the composition of the observed staff population changes over time.
+
+```{r}
+#| label: staff-category-shares-over-time
+#| fig-width: 4.5
+#| fig-height: 3
+
+staffer_year_primary_plot |>
+  filter(year > 2000) |>
+  count(
+    year,
+    plot_category,
+    name = "staffer_member_years"
+  ) |>
+  mutate(
+    share =
+      staffer_member_years /
+      sum(staffer_member_years),
+    .by = year
+  ) |>
+  ggplot(
+    aes(
+      x = year,
+      y = share,
+      fill = plot_category
+    )
+  ) +
+  geom_area(
+    position = "fill",
+    color = "white",
+    linewidth = 0.15
+  ) +
+  scale_y_continuous(
+    labels =
+      label_percent(accuracy = 1),
+    expand = expansion(
+      mult = c(0, 0)
+    )
+  ) +
+  # scale_fill_viridis_d(
+  #   option = "D",
+  #   end = 0.9
+  # ) +
+  labs(
+   # title = paste( "Composition of congressional staff"),
+    x = "",
+    y = "Avg. Staffers", 
+    fill = ""
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.minor =
+      element_blank(),
+    panel.grid.major =
+      element_blank(),
+    legend.position =
+      "right"
+  ) 
+```
+
+# 17. Plot member-office category counts
+
+Because plotting every office separately would be visually dense, the following figures summarize the distribution across member offices.
+
+The first figure plots the annual median office count for each category, separately by chamber.
+
+```{r}
+#| label: staff-median-office-category-counts
+#| fig-width: 10
+#| fig-height: 6.5
+
+member_year_category_plot |>
+  filter(year > 2010) |>
+  summarise(
+    median_staff_count =
+      median(
+        staff_count,
+        na.rm = TRUE
+      ),
+    .by = c(
+      year,
+      chamber,
+      plot_category
+    )
+  ) |>
+  ggplot(
+    aes(
+      x = year,
+      y = median_staff_count,
+      color = plot_category
+    )
+  ) +
+  geom_line(linewidth = 0.8) +
+  facet_wrap(
+    vars(chamber),
+    scales = "free_y"
+  ) +
+  scale_y_continuous(
+    breaks = pretty_breaks(),
+    expand = expansion(
+      mult = c(0, 0.05)
+    )
+  ) +
+  # scale_color_viridis_d(
+  #   option = "D",
+  #   end = 0.9
+  # ) +
+  labs(
+    # title = paste(
+    #   "Median staff count per",
+    #   "member office by category"
+    # ),
+    # subtitle = paste(
+    #   "Seven most common primary categories;",
+    #   "all remaining categories are grouped as other"
+    # ),
+    x = "Year",
+    y = "Median number of staffers",
+    color = "Employee category"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.minor =
+      element_blank(),
+    legend.position =
+      "right"
+  ) +
+  guides(
+    color = guide_legend(
+      #nrow = 2,
+      byrow = TRUE
+    )
+  )
+```
+
+The next figure shows the full office-level distributions after 2010. The `log1p` y-axis makes unusually large staffs visible without compressing most offices near zero.
+
+```{r}
+#| label: staff-office-category-count-distributions
+#| fig-width: 12
+#| fig-height: 7
+
+member_year_category_plot |>
+  filter(year > 2010) |>
+  ggplot(
+    aes(
+      x = factor(year),
+      y = staff_count,
+      label = bioname |> str_remove(",.*"), 
+      fill = plot_category
+    )
+  ) +
+  geom_boxplot(
+    outlier.alpha = 0.08,
+    linewidth = 0.25
+  ) +
+  ggrepel::geom_text_repel(check_overlap = T, 
+                           max.overlaps = 4,
+                           size = 1) + 
+  facet_grid(
+    rows = vars(chamber),
+    cols = vars(plot_category),
+    scales = "free_y"
+  ) +
+  scale_y_continuous(
+    trans = "log1p",
+    breaks = c(
+      0,
+      1,
+      2,
+      5,
+      10,
+      20,
+      50,
+      100
+    ),
+    labels = label_number()
+  ) +
+  # scale_fill_viridis_d(
+  #   option = "D",
+  #   end = 0.9,
+  #   guide = "none"
+  # ) +
+  labs(
+    # title = paste(
+    #   "Distribution of staff counts",
+    #   "across member offices"
+    # ),
+    # subtitle = paste(
+    #   "Office-level counts by year",
+    #   "employee category"
+    # ),
+    x = "Year",
+    y = "Number of staffers"
+  ) +
+  theme_minimal(base_size = 10) +
+  theme(
+    panel.grid.minor =
+      element_blank(),
+    axis.text.x = element_text(
+      angle = 90,
+      hjust = 1,
+      vjust = 0.5
+    ),
+    strip.text.x =
+      element_text(size = 8)
+  )
+```
+
+# 18. Compare primary and multiple-category counting
+
+The primary-category method counts each person once per member-year. The multiple-category method counts the person once in every category held during that year.
+
+This comparison indicates how much the one-category choice changes aggregate category counts.
+
+```{r}
+#| label: compare-primary-and-multiple-category-counts
+
+primary_category_totals <-
+  member_year_category_counts |>
+  summarise(
+    primary_staff_count =
+      sum(
+        staff_count,
+        na.rm = TRUE
+      ),
+    .by = c(
+      year,
+      primary_category
+    )
+  )
+
+multiple_category_totals <-
+  member_year_category_counts_multiple |>
+  summarise(
+    multiple_category_staff_count =
+      sum(
+        staff_count,
+        na.rm = TRUE
+      ),
+    .by = c(
+      year,
+      category
+    )
+  ) |>
+  rename(
+    primary_category = category
+  )
+
+category_method_comparison <-
+  full_join(
+    primary_category_totals,
+    multiple_category_totals,
+    by = c(
+      "year",
+      "primary_category"
+    )
+  ) |>
+  mutate(
+    primary_staff_count =
+      replace_na(
+        primary_staff_count,
+        0L
+      ),
+    multiple_category_staff_count =
+      replace_na(
+        multiple_category_staff_count,
+        0L
+      ),
+    difference =
+      multiple_category_staff_count -
+      primary_staff_count,
+    relative_difference = if_else(
+      primary_staff_count > 0,
+      difference /
+        primary_staff_count,
+      NA_real_
+    )
+  ) |>
+  arrange(
+    year,
+    primary_category
+  )
+```
+
+```{r}
+#| label: summarize-category-counting-methods
+
+category_method_comparison |>
+  summarise(
+    primary_staff_count =
+      sum(
+        primary_staff_count,
+        na.rm = TRUE
+      ),
+    multiple_category_staff_count =
+      sum(
+        multiple_category_staff_count,
+        na.rm = TRUE
+      ),
+    additional_category_assignments =
+      sum(
+        difference,
+        na.rm = TRUE
+      )
+  ) |>
+  knitr::kable(
+    caption = paste(
+      "Comparison of primary-category",
+      "and multiple-category counts"
+    )
+  )
+```
+
+# 19. Inspect offices with unusually small or large staffs
+
+These tables use the total number of distinct staffers in the primary staffer-year data, not the sum of long multiple-category assignments.
+
+```{r}
+#| label: inspect-small-member-offices
+
+member_year_totals |>
+  filter(
+    year > 2011,
+    total_staff_count < 10
+  ) |>
+  arrange(
+    year,
+    chamber,
+    total_staff_count,
+    bioname
+  ) |>
+  select(
+    congress,
+    year,
+    icpsr,
+    bioname,
+    chamber,
+    total_staff_count
+  ) |>
+  knitr::kable(
+    caption = paste(
+      "Member offices with fewer",
+      "than 10 observed staffers"
+    )
+  )
+```
+
+```{r}
+#| label: inspect-large-member-offices
+
+member_year_totals |>
+  filter(
+    year > 2011,
+    total_staff_count > 100
+  ) |>
+  arrange(
+    desc(total_staff_count),
+    year,
+    bioname
+  ) |>
+  select(
+    congress,
+    year,
+    member_id,
+    icpsr,
+    bioname,
+    chamber,
+    total_staff_count
+  ) |>
+  knitr::kable(
+    caption = paste(
+      "Member offices with more",
+      "than 100 observed staffers"
+    )
+  )
+```
+
+# 20. Inspect the category composition of selected offices
+
+The helper below displays category counts for a selected `member_id`. It can be reused for cases that warrant manual review.
+
+```{r}
+#| label: define-office-category-inspection-helper
+
+inspect_office_categories <- function(
+  selected_member_id,
+  selected_years = NULL
+) {
+  output <-
+    member_year_category_counts |>
+    filter(
+      member_id ==
+        selected_member_id
+    )
+
+  if (!is.null(selected_years)) {
+    output <- output |>
+      filter(
+        year %in%
+          selected_years
+      )
+  }
+
+  output |>
+    select(
+      congress,
+      year,
+      member_id,
+      icpsr,
+      bioname,
+      chamber,
+      primary_category,
+      staff_count,
+      total_staff_count,
+      category_staff_share
+    ) |>
+    arrange(
+      year,
+      desc(staff_count),
+      primary_category
+    )
+}
+```
+
+```{r}
+#| label: inspect-warren-category-counts
+
+inspect_office_categories(
+  selected_member_id = 2874,
+  selected_years = 2020:2026
+) |>
+  knitr::kable(
+    digits = 3,
+    caption = paste(
+      "Elizabeth Warren's observed",
+      "staff counts by category"
+    )
+  )
+```
+
+```{r}
+#| label: inspect-maloney-category-counts
+
+inspect_office_categories(
+  selected_member_id = 348,
+  selected_years = 2018:2022
+) |>
+  knitr::kable(
+    digits = 3,
+    caption = paste(
+      "Carolyn Maloney's observed",
+      "staff counts by category"
+    )
+  )
+```
+
+# Output objects
+
+This document saves five analytic objects:
+
+- `staffer_year_primary`: one row per staffer–member–year with one primary category.
+- `staffer_year_categories_long`: one row per staffer–member–year–category.
+- `member_year_category_counts`: long member-year counts based on primary categories.
+- `member_year_category_counts_multiple`: long sensitivity counts allowing multiple categories per staffer-year.
+- `member_year_category_counts_wide`: one row per member-year with category-specific count columns.
+
+The default member-year measure is `member_year_category_counts`, because each person contributes to exactly one category and category counts sum to the total observed staff count.
+
+# Key limitations
+
+1. The results inherit any missing or inaccurate employment spells in `congressional_history.csv`.
+2. Employment associated with a member outside the member's actual congressional service may remain unless removed through the Voteview merge.
+3. Committee or leadership staff associated with a member may substantially increase that member's staff count.
+4. Job-title categories depend on the coverage and accuracy of `staff_title_lookup.rda`.
+5. The primary-category rule compresses multi-role staffers into one category.
+6. The multiple-category sensitivity output avoids that compression but can count a person in more than one category per member-year.
+7. A staffer who worked only briefly during a year counts as one staffer in the unweighted count.
+8. `active_days_in_category` and `category_year_fraction` are retained for future time-weighted measures.

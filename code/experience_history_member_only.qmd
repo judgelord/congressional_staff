@@ -1,0 +1,224 @@
+---
+title: "Congressional staff experience from LegiStorm data"
+subtitle: "Primary employment history from congressional_history.csv"
+author: Devin Judge-Lord
+date: today
+format:
+  html:
+    toc: true
+    code-fold: true
+    self-contained: true
+editor_options:
+  chunk_output_type: console
+---
+
+# Congressional staff experience
+
+The primary source for this analysis is `congressional_history.csv`. The appropriate unit is a **staffer–office spell**: one row for each period during which a person worked in a congressional office.
+
+The principal identifiers are:
+
+- `core_person_id`: staffer
+- `member_id`: member whose office employed the staffer
+- `office_id`: committee or institutional office
+- `start_date`, `end_date`: employment spell
+- `position_title`: staff position
+- `office_type_id`: office type
+
+For staffer \(i\) in member office \(m\) during year \(y\), define:
+
+$$
+E_{imy} =
+\text{total years staffer } i
+\text{ worked in any congressional office by the reference date in year } y.
+$$
+
+Member-office experience is:
+
+$$
+E_{my} = \sum_{i \in S_{my}} E_{imy},
+$$
+
+where \(S_{my}\) is the set of distinct staffers employed by member \(m\) in year \(y\).
+
+The analysis:
+
+1. Uses `congressional_history.csv` to define the primary staffer–member–year population.
+2. Uses all congressional-history spells to measure each person's accumulated congressional experience.
+3. Merges overlapping spells so concurrent jobs are not counted more than once.
+4. Counts each person once per member-year.
+5. Uses December 31 as the annual reference date, censored at the analysis endpoint.
+
+# Warnings
+
+Ligistorm `icpsr_id` from member_office.csv is time-invariant. It appears to be a member's first icpsr id in voteview, not the one as of any particular date. Thus, we have to do a double merge we merge in `bioname` on `icpsr_id` and then merge in voteview's `icpsr` on `bioname` + `congress`. 
+
+# Questions about `congressional_history.csv`
+
+## 1. How are committee and leadership staff attached to members? Is this a formal supervisory relationship or something else?  
+
+
+The `office_type_id` provided is `HM` and `SM` for most observations, with 11% blank. 
+
+`office_id` is 72% NA. When we merge on office_id,  we get a different `office_type_id`. Is it correct that when it is not NA, these are committee and leadership staff? 
+
+For example, 1203 staffers are classified as `office_id = 1203` (House Committee Staff) and `office_type_id` = "HM" (House Member Staff) --- these are actually committee staff under the control of the member, correct? How is that control established? 
+
+We are seeing some members of the House and Senate with over 100 staffers --- for example: 
+
+- Carolyn Maloney in 2020, when she was chair of the House Oversight Committee.
+- Elizabeth Warren's staff jumped by 50% in 2025, when she became ranking member of the Senate Banking committee
+
+
+### What does it mean when `office_id` is NA? 
+
+Are these the true member office staff? 
+
+`office.csv` had `office_id` for HM and SM offices --- are these just missing from `congressional_history.csv`, or does it mean something? 
+
+
+### What does it mean when `member_id` is NA but `office_id` is not NA? 
+
+I am seeing 71 "Constituent Services Representative" positions who have NA for member ID, but the `office_id`s seem to be House or Senate member offices. Are these vacant offices? 
+
+### Do these data contain all non-member office congressional employment (e.g, committees and leadership)? 
+
+If just some, was that determined? 
+
+
+## 2. Is there potential missing data in the first year? For partial terms?
+
+- We are seeing some Reps with fewer than 10 staffers. Most of these are people in their first year. Likewise with senators with fewer than 40 staffers
+
+Relatedly, is there missing data for people serving partial terms, or should we assume they have not yet staffed up? 
+
+- DELBENE, Suzan K. had 8 staffers in 2012 when she served the remainder of the term for the seat left vacant by the resignation of Jay Inslee. 
+- CLARK, Katherine M., had 5 staffers after winning the special election in 2013 on December 10
+- BYRNE, Bradley, had 7 staffers after taking office December 17, 2013 
+- EVANS, Dwight, joined Congress November 8, 2016, and had 1 staffer 
+- COMER, James, joined Congress November 8, 2016, and had 9 staffers 
+- SCANLON, Mary Gay took office November 6, 2018, with 7 staffers 
+- WILD, Susan took office November 6, 2018, with 7 staffers
+- BROWN, Shontel M., was sworn in on November 4 and had 7 staffers 
+- FINSTAD, Brad took office August 9, 2022, and had 9 staffers 
+- YAKYM, Rudy, III took office November 8, 2022, had 8 staff
+- AMO, Gabe, took office with 9 staffers on November 7, 2023 
+- WIED, Tony, took office with 8 staffers on November 5, 2024
+
+## 3. What does it mean when staff is associated with a member_id before or after they were in Congress? 
+
+- Elizabeth Warren has one staffer the year before she took office
+- David Wu has one staffer the year after he left office
+- ISAKSON, Johnny had 6 staffers in 2020, after resigning in 2019
+- BOEHNER, John Andrew had 2 staffers in 2016 after resigning in 2015
+- HANABUSA, Colleen had 9 staffers in 2016, having left office Jan 2015
+- CLAWSON, Curt took office June 24, 2014, but had 1 staffer in 2013
+
+Presumably, this reflects some non-congress affiliated employment with that person.
+
+## 5. Do the summary statistics in the figures below look right?  
+
+Given your knowledge of the data, does it look like we are summarizing it correctly? Or does something here look off? 
+
+
+# Data 
+
+Primary 
+
+- "congressional_history.csv"
+
+Secondary 
+
+- "staff_title_lookup.rda"
+- "member_office.csv"
+- "office.csv"
+- "office_type.csv"
+- "members" from `legislators` package (for true icpsr numbers and member metadata from voteview.com) 
+
+```{r}
+#| label: setup
+#| warning: false
+#| message: false
+
+library(tidyverse)
+library(data.table)
+library(here)
+library(scales)
+
+here::here("code", "qmd_global_options.R") |> source()
+
+# for this page 
+knitr::opts_chunk$set(
+  fig.width = 7.5,
+  fig.height = 7.5,
+  fig.path='../figs/')
+
+data_dir <- here(
+  "data",
+  "legistorm",
+  "LegistormDataWisconsin2026",
+  "Data"
+)
+
+analysis_end <- as.IDate("2026-12-31")
+
+history <- fread(
+  file.path(data_dir, "congressional_history.csv"),
+  na.strings = c("", "NA", "NULL")
+)
+
+load(file = here::here("data", "staff_title_lookup.rda"))
+
+staff_title_lookup |> count(category)
+
+history <- history |> full_join(staff_title_lookup) 
+
+# DROP INTERNS AND OTHER TEMPS 
+history <- filter(history, category != "temporary")
+
+member_office <- fread(
+  file.path(data_dir, "member_office.csv"),
+  na.strings = c("", "NA", "NULL")
+)
+
+office <- fread(
+  file.path(data_dir, "office.csv"),
+  na.strings = c("", "NA", "NULL")
+)
+
+# office |> select(office_id, office_type_id)
+
+office_type <- fread(
+  file.path(data_dir, "office_type.csv"),
+  na.strings = c("", "NA", "NULL")
+)
+
+#office_type <- office |> select(office_id, office_type_id) |> left_join(office_type)
+
+# using office type provided
+history |> 
+  left_join(office_type) |> 
+  count(name,office_type_id, sort = T)
+
+# using office type after removing office_type and re-merging it in from office.csv 
+history |> select(-office_type_id) |> left_join(office) |>  left_join(office_type) |> count(office_type_id, name, sort = T)
+
+# add in office_type_id based on office_id
+history <- history |> left_join(office |> select(office_id, office_type_id2 = office_type_id)) |> 
+  ###########################################################################
+  ###FIXME  THE BIG EDIT IN THIS SCIRPT  - THESE ARE REVERSED FROM THE OTHER 
+  mutate(office_type_id = coalesce(office_type_id2, office_type_id),
+         office_type_id2 = coalesce(office_type_id, office_type_id2))
+  ##########################################################################
+
+
+member <- fread(
+  file.path(data_dir, "member.csv"),
+  na.strings = c("", "NA", "NULL")
+)
+
+person <- fread(
+  file.path(data_dir, "core_person.csv"),
+  na.strings = c("", "NA", "NULL")
+)
+```
